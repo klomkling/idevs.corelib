@@ -37,9 +37,10 @@ export type IdevsExportRequest = ListRequest & {
 }
 
 export type IdevsExportOptions = IdevsExportRequest & {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  grid: DataGrid<any, any>
   service: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  grid?: DataGrid<any, any>
+  dialogTitle?: string
 }
 
 export type ExportOptions = IdevsExportOptions & {

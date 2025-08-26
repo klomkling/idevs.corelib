@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5] - 2025-01-26
+
+### Changed
+
+- **Code Organization**: Eliminated duplicate type declarations by consolidating all export-related types in `src/types/export.ts`
+- **Import Structure**: Updated imports to use proper source modules instead of duplicate declarations
+- **Type Consistency**: Ensured all type definitions are maintained in a single source of truth
+
+### Fixed
+
+- **Type Definition Issues**: Resolved inconsistencies between duplicate type declarations that were causing TypeScript errors
+- **Missing Properties**: Fixed missing `dialogTitle` property in `IdevsExportOptions` type definitions
+- **Backward Compatibility**: Maintained compatibility by re-exporting types from `globals/index.ts`
+
+### Removed
+
+- **Duplicate Types**: Removed redundant type declarations from `src/globals/index.ts` (now re-exported from `types/export`)
+
 ## [1.0.4] - 2025-01-26
 
 ### Changed

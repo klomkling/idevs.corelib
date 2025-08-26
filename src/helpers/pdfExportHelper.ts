@@ -1,5 +1,5 @@
 import { deepClone, serviceCall } from '@serenity-is/corelib'
-import { IdevsContentResponse, IdevsExportOptions, IdevsExportRequest } from '../globals'
+import { IdevsContentResponse, IdevsExportOptions, IdevsExportRequest } from '../types/export'
 
 export function doExportPdf(options: IdevsExportOptions): void {
   const grid = options.grid
