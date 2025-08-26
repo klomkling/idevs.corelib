@@ -1,6 +1,6 @@
 {
   "name": "@idevs/corelib",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Extended library components and utilities for Serenity Framework",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -49,26 +49,16 @@
   },
   "dependencies": {
     "@serenity-is/corelib": "^8.8.6",
-    "@serenity-is/sleekgrid": "^1.9.6",
-    "html-to-pdfmake": "^2.5.30",
-    "pdfmake": "^0.2.20",
-    "html2pdf.js": "^0.10.3",
-    "jspdf": "^3.0.1"
+    "@serenity-is/sleekgrid": "^1.9.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
     "@serenity-is/tsbuild": "^8.8.7",
-    "@types/html-to-pdfmake": "^2.4.4",
     "@types/jquery": "^3.5.32",
     "@types/jquery.validation": "^1.17.0",
     "@types/jqueryui": "^1.12.24",
-    "@types/jspdf": "^2.0.0",
-    "@types/pdfmake": "^0.2.11",
-    "@types/toastr": "^2.1.43",
     "@typescript-eslint/eslint-plugin": "^8.39.1",
     "@typescript-eslint/parser": "^8.39.1",
-    "@typescript-eslint/typescript-estree": "^8.39.1",
-    "bootstrap": "^5.3.7",
     "eslint": "^9.33.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.6.2",

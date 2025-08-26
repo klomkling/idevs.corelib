@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2025-01-26
+
+### Removed
+
+- **Dependency cleanup**: Removed unused PDF-related packages and their type definitions:
+  - Dependencies: `html-to-pdfmake`, `pdfmake`, `html2pdf.js`, `jspdf`
+  - DevDependencies: `@types/html-to-pdfmake`, `@types/jspdf`, `@types/pdfmake`, `@types/toastr`, `@typescript-eslint/typescript-estree`, `bootstrap`
+- **Bundle size reduction**: Significantly reduced package size by removing unused dependencies
+- **Improved build performance**: Faster installation and build times due to fewer dependencies
+
+### Fixed
+
+- **ESLint errors**: Fixed `no-undef` ESLint errors for browser globals (`setTimeout`, `requestAnimationFrame`)
+
 ## [1.0.2] - 2025-01-26
 
 ### Changed

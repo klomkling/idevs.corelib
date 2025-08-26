@@ -1,11 +1,5 @@
 import { deepClone, postToService, serviceCall } from '@serenity-is/corelib'
 import { IdevsContentResponse, IdevsExportOptions, IdevsExportRequest } from '../globals'
-import html2pdf from 'html2pdf.js'
-import { jsPDF } from 'jspdf'
-import pdfMake from 'pdfmake/build/pdfmake'
-import { vfsFonts } from './custom-fonts'
-import htmlToPdfmake from 'html-to-pdfmake'
-import { Margins, PageOrientation, PageSize, Style, TDocumentDefinitions } from 'pdfmake/interfaces'
 
 export function doExportPdf(options: IdevsExportOptions): void {
   const grid = options.grid
@@ -51,200 +45,173 @@ export function doExportPdf(options: IdevsExportOptions): void {
       const blob = base64ToBlob(pdfContent, response.ContentType)
       const objectUrl = URL.createObjectURL(blob)
 
-      // Create modal elements
-      const modal = document.createElement('div')
-      modal.className = 'modal fade'
-      modal.tabIndex = -1
-      modal.style.zIndex = '1150'
-
-      modal.innerHTML = `
-            <div class="modal-dialog modal-xl">
-                <div class="modal-content">
-                    <div class="modal-body p-0">
-                        <iframe style="width:100%; height:90vh; border: none;" frameborder="0"></iframe>
-                    </div>
-                </div>
-            </div>
-        `
-
-      const iframe = modal.querySelector('iframe')!
-      iframe.src = objectUrl
-
-      // Append to body
-      document.body.appendChild(modal)
-
-      // Show modal using jQuery Bootstrap
-      ;($(modal) as any).modal({
-        backdrop: 'static',
-        keyboard: true,
-      })
-
-      // Print when iframe is loaded
-      iframe.onload = () => {
-        iframe.contentWindow?.focus()
-        iframe.contentWindow?.print()
-      }
-
-      // Cleanup when modal is closed
-      ;($(modal) as any).on('hidden.bs.modal', () => {
-        URL.revokeObjectURL(objectUrl)
-        modal.remove()
-      })
-
-      // Show modal
-      ;($(modal) as any).modal('show')
+      showFluentPdfPreview(objectUrl, options.dialogTitle, options.openPrintDialog ?? false)
     })
   } else {
     postToService({ service: options.service, request: request, target: '_blank' })
   }
 }
 
-export type generatePdfOption = {
-  unit?: string
-  format?: string
-  orientation?: string
-  margin?: number
-}
+function showFluentPdfPreview(
+  objectUrl: string,
+  dialogTitle?: string,
+  autoPrint: boolean = false
+): void {
+  // Create Fluent UI dialog container
+  const dialogContainer = document.createElement('div')
+  dialogContainer.className = 'ms-Dialog-main'
+  dialogContainer.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    `
 
-export function generatePdf(content: string, option?: generatePdfOption): void {
-  const margin = option?.margin ?? 10
-  const unit = option?.unit ?? 'mm'
-  const format = option?.format ?? 'a4'
-  const orientation = option?.orientation ?? 'portrait'
-  if (content) {
-    html2pdf()
-      .from(content)
-      .set({
-        margin: margin,
-        filename: 'filename.pdf',
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, logging: true, dpi: 192, letterRendering: true },
-        jsPDF: { unit: unit, format: format, orientation: orientation },
-      })
-      .toPdf()
-      .get('pdf')
-      .then((pdf: jsPDF) => {
-        const blob = pdf.output('blob')
-        const url = URL.createObjectURL(blob)
-        window.open(url, '_blank')
-      })
+  // Create dialog content
+  const dialog = document.createElement('div')
+  dialog.className = 'ms-Dialog ms-Depth-64'
+  dialog.style.cssText = `
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 25.6px 57.6px rgba(0, 0, 0, 0.22), 0 4.8px 14.4px rgba(0, 0, 0, 0.18);
+        width: 90vw;
+        height: 90vh;
+        max-width: 1200px;
+        max-height: 800px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    `
+
+  // Create header
+  const header = document.createElement('div')
+  header.className = 'ms-Dialog-header'
+  header.style.cssText = `
+        padding: 8px 16px 8px 24px;
+        border-bottom: 1px solid #e1dfdd;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    `
+
+  const title = document.createElement('h2')
+  title.className = 'ms-Dialog-title'
+  title.textContent = dialogTitle || 'PDF Preview'
+  title.style.cssText = `
+        margin: 0;
+        font-size: 20px;
+        font-weight: 600;
+        color: #323130;
+    `
+
+  const closeButton = document.createElement('button')
+  closeButton.className = 'ms-Button ms-Button--icon'
+  closeButton.innerHTML = '✕'
+  closeButton.style.cssText = `
+        background: transparent;
+        border: none;
+        font-size: 16px;
+        cursor: pointer;
+        padding: 8px;
+        border-radius: 4px;
+        color: #605e5c;
+    `
+  closeButton.onmouseover = () => {
+    closeButton.style.backgroundColor = '#f3f2f1'
   }
-}
+  closeButton.onmouseout = () => {
+    closeButton.style.backgroundColor = 'transparent'
+  }
 
-export function makePdf(html: string, options?: PageOptions): Promise<string> {
-  return new Promise((resolve, reject) => {
-    if (!html) {
-      reject('No html to make a pdf')
-    } else {
-      pdfMake.vfs = vfsFonts
-      pdfMake.fonts = {
-        Roboto: {
-          normal: 'Roboto-Regular.ttf',
-          bold: 'Roboto-Medium.ttf',
-          italics: 'Roboto-Italic.ttf',
-          bolditalics: 'Roboto-MediumItalic.ttf',
-        },
-        THSarabun: {
-          normal: 'THSarabun.ttf',
-          bold: 'THSarabun Bold.ttf',
-          italics: 'THSarabun Italic.ttf',
-          bolditalics: 'THSarabun Bold Italic.ttf',
-        },
-      }
+  header.appendChild(title)
+  header.appendChild(closeButton)
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const def: any = htmlToPdfmake(html, { tableAutoSize: true })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let main = def.find((el: any) => el['nodeName'] == 'MAIN')
-      if (!main) {
-        return
-      }
-      main = removeEmptyTextNodes(main)
+  // Create content area
+  const content = document.createElement('div')
+  content.className = 'ms-Dialog-content'
+  content.style.cssText = `
+        flex: 1;
+        padding: 0;
+        overflow: hidden;
+    `
 
-      const defStyle = options?.defaultStyle || {
-        font: 'THSarabun',
-      }
+  const iframe = document.createElement('iframe')
+  iframe.src = objectUrl
+  iframe.style.cssText = `
+        width: 100%;
+        height: 100%;
+        border: none;
+    `
+  // Auto-print functionality
+  let printTriggered = false
+  iframe.onload = () => {
+    if (autoPrint && !printTriggered) {
+      printTriggered = true
 
-      const margin = options?.pageMargins ?? 40
-      const pageSize = options?.pageSize ?? 'A4'
-      const pageOrientation = options?.pageOrientation ?? 'portrait'
+      // Delay to ensure PDF is fully loaded
+      // eslint-disable-next-line no-undef
+      setTimeout(() => {
+        try {
+          iframe.contentWindow?.focus()
+          iframe.contentWindow?.print()
+        } catch (e) {
+          console.warn('Error triggering print:', e)
+        }
+      }, 1000)
+    }
+  }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let header: any = def.find((el: any) => el['nodeName'] == 'HEADER')
-      header = removeEmptyTextNodes(header)
-      const hd = header ? JSON.stringify(header) : undefined
+  content.appendChild(iframe)
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let footer = def.find((el: any) => el['nodeName'] == 'FOOTER')
-      if (footer) {
-        footer = removeEmptyTextNodes(footer)
-      }
-      const ft = footer ? JSON.stringify(footer) : undefined
+  // Assemble dialog
+  dialog.appendChild(header)
+  dialog.appendChild(content)
+  dialogContainer.appendChild(dialog)
 
-      const content: TDocumentDefinitions = {
-        content: main,
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        header: function (currentPage, pageCount, pageSize) {
-          if (!hd) {
-            return ''
-          }
+  // Add event listeners
+  const closeDialog = () => {
+    URL.revokeObjectURL(objectUrl)
+    document.body.removeChild(dialogContainer)
+  }
 
-          const h = hd
-            .replace('{{pageNo}}', currentPage.toString())
-            .replace('{{totalPages}}', pageCount.toString())
-          return JSON.parse(h)
-        },
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        footer: function (currentPage, pageCount, pageSize) {
-          if (!ft) {
-            return ''
-          }
-          const f = ft
-            .replace('{{pageNo}}', currentPage.toString())
-            .replace('{{totalPages}}', pageCount.toString())
-          return JSON.parse(f)
-        },
-        pageSize: pageSize,
-        pageOrientation: pageOrientation,
-        pageMargins: margin,
-        defaultStyle: defStyle,
-      }
+  closeButton.addEventListener('click', closeDialog)
 
-      pdfMake.createPdf(content).open()
-
-      resolve('Make pdf successfully')
+  // Close on backdrop click
+  dialogContainer.addEventListener('click', e => {
+    if (e.target === dialogContainer) {
+      closeDialog()
     }
   })
-}
 
-export type PageOptions = {
-  defaultStyle?: Style | undefined
-  pageSize?: PageSize | undefined
-  pageOrientation?: PageOrientation | undefined
-  pageMargins?: Margins | undefined
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const removeEmptyTextNodes = (obj: any): any => {
-  // If obj is an array, iterate through each element and filter
-  if (Array.isArray(obj)) {
-    return obj
-      .map(removeEmptyTextNodes) // Recursively apply the function
-      .filter(item => !(item && item.text === ' ')) // Remove elements where text is " "
-  }
-
-  // If obj is an object, check each key
-  if (typeof obj === 'object' && obj !== null) {
-    // eslint-disable-next-line prefer-const
-    for (let key in obj) {
-      // eslint-disable-next-line no-prototype-builtins
-      if (obj.hasOwnProperty(key)) {
-        obj[key] = removeEmptyTextNodes(obj[key])
-      }
+  // Close on Escape key
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      closeDialog()
+      document.removeEventListener('keydown', handleKeyDown)
     }
   }
+  document.addEventListener('keydown', handleKeyDown)
 
-  return obj
+  // Add to DOM
+  document.body.appendChild(dialogContainer)
+
+  // Animate in
+  dialogContainer.style.opacity = '0'
+  dialog.style.transform = 'scale(0.9)'
+
+  // eslint-disable-next-line no-undef
+  requestAnimationFrame(() => {
+    dialogContainer.style.transition = 'opacity 0.2s ease'
+    dialog.style.transition = 'transform 0.2s ease'
+    dialogContainer.style.opacity = '1'
+    dialog.style.transform = 'scale(1)'
+  })
 }
 
 // Helper function to convert base64 to blob
