@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2025-01-26
+
+### Fixed
+
+- **Type compatibility issue**: Fixed `PageSize` type definition in `src/globals/index.ts` where the `Size` property was incorrectly self-referencing instead of referencing the `PageSizes` enum. This resolves the TypeScript error when using `doExportPdf` function across different projects.
+
 ## [1.0.0] - 2024-08-16
 
 > **BREAKING CHANGES**: This is a major refactoring release with breaking changes. See migration guide below.

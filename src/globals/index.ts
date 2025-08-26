@@ -248,7 +248,7 @@ export enum PageOrientations {
 }
 
 export type PageSize = {
-  Size: PageSize
+  Size: PageSizes
   Orientation: PageOrientations
 }
 
