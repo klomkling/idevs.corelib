@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2025-01-26
+
+### Changed
+
+- **doExportPdf flexibility**: Made `grid` property optional in `IdevsExportOptions` type. The `doExportPdf` function now supports both grid-based exports (existing behavior) and manual exports without requiring a grid instance. When no grid is provided, the function will use the export options directly without extracting grid-specific data.
+
 ## [1.0.1] - 2025-01-26
 
 ### Fixed
