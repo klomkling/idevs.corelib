@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2025-01-26
+
+### Changed
+
+- **PDF Export Enhancement**: Improved `doExportPdf` function with better rendering logic:
+  - Added direct download functionality when render mode is disabled
+  - Enhanced PDF preview dialog with Fluent UI styling and better user experience
+  - Improved error handling for print functionality
+
+### Added
+
+- **Download Mode**: Added automatic file download functionality for PDF exports when render mode is set to false
+- **Fluent UI Dialog**: Modern dialog interface for PDF preview with proper styling and animations
+- **Auto-print Support**: Optional automatic print dialog trigger for PDF previews
+
+### Fixed
+
+- **Memory Management**: Proper cleanup of object URLs to prevent memory leaks
+- **ESLint Compliance**: Added necessary ESLint disable comments for browser globals
+
 ## [1.0.3] - 2025-01-26
 
 ### Removed
@@ -15,9 +35,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Bundle size reduction**: Significantly reduced package size by removing unused dependencies
 - **Improved build performance**: Faster installation and build times due to fewer dependencies
 
+### Changed
+
+- **PDF Export Enhancement**: Improved `doExportPdf` function with better rendering logic:
+  - Simplified conditional logic for render mode: now uses `options.render !== false` instead of `options.render || false`
+  - Added direct download functionality when render mode is disabled
+  - Enhanced PDF preview dialog with Fluent UI styling and better user experience
+  - Improved error handling for print functionality
+
+### Added
+
+- **Download Mode**: Added automatic file download functionality for PDF exports when render mode is set to false
+- **Fluent UI Dialog**: Modern dialog interface for PDF preview with proper styling and animations
+- **Auto-print Support**: Optional automatic print dialog trigger for PDF previews
+
 ### Fixed
 
 - **ESLint errors**: Fixed `no-undef` ESLint errors for browser globals (`setTimeout`, `requestAnimationFrame`)
+- **Memory Management**: Proper cleanup of object URLs to prevent memory leaks
 
 ## [1.0.2] - 2025-01-26
 

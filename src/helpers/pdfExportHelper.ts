@@ -1,4 +1,4 @@
-import { deepClone, postToService, serviceCall } from '@serenity-is/corelib'
+import { deepClone, serviceCall } from '@serenity-is/corelib'
 import { IdevsContentResponse, IdevsExportOptions, IdevsExportRequest } from '../globals'
 
 export function doExportPdf(options: IdevsExportOptions): void {
@@ -36,20 +36,36 @@ export function doExportPdf(options: IdevsExportOptions): void {
   request.logo = options.logo
   request.entity = options.entity
 
-  if (options.render || false) {
-    serviceCall({
-      service: options.service,
-      request: request,
-    }).then((response: IdevsContentResponse) => {
-      const pdfContent = response.Content
-      const blob = base64ToBlob(pdfContent, response.ContentType)
-      const objectUrl = URL.createObjectURL(blob)
+  serviceCall({
+    service: options.service,
+    request: request,
+  }).then((response: IdevsContentResponse) => {
+    const pdfContent = response.Content
+    const blob = base64ToBlob(pdfContent, response.ContentType)
+    const objectUrl = URL.createObjectURL(blob)
 
+    const render = options.render || false;
+    if (render) {
       showFluentPdfPreview(objectUrl, options.dialogTitle, options.openPrintDialog ?? false)
-    })
-  } else {
-    postToService({ service: options.service, request: request, target: '_blank' })
-  }
+    }
+    else {
+      // Download mode
+      const blob = base64ToBlob(pdfContent, response.ContentType)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${options.reportName}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+
+      // Clean up
+      // eslint-disable-next-line no-undef
+      setTimeout(() => {
+        URL.revokeObjectURL(url)
+      }, 1000);
+    }
+  });
 }
 
 function showFluentPdfPreview(
