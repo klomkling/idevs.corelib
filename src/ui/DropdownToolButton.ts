@@ -149,11 +149,16 @@ export function buildSideButtonElement(button: ToolDropdownSideButtonItem): HTML
  */
 export function buildDropdownItemElement(button: DropdownToolButtonItem): HTMLElement {
   const li = document.createElement('li')
+  const dropdownHeaderTitle = button.dropdownHeaderTitle
 
-  if (button.isDropdownHeader && !isEmptyOrNull(button.dropdownHeaderTitle as string)) {
+  if (
+    button.isDropdownHeader &&
+    typeof dropdownHeaderTitle === 'string' &&
+    !isEmptyOrNull(dropdownHeaderTitle)
+  ) {
     const classes = ['dropdown-header', ...__sanitizeClassTokens(button.cssClass)]
     li.className = classes.join(' ')
-    li.textContent = button.dropdownHeaderTitle ?? ''
+    li.textContent = dropdownHeaderTitle
     return li
   }
 
