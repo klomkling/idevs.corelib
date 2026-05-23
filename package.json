@@ -1,6 +1,6 @@
 {
   "name": "@idevs/corelib",
-  "version": "1.0.5",
+  "version": "1.1.0",
   "description": "Extended library components and utilities for Serenity Framework",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -45,7 +45,8 @@
     "dist/**/*",
     "README.md",
     "LICENSE",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "MIGRATION.md"
   ],
   "publishConfig": {
     "access": "public"
@@ -61,10 +62,18 @@
     "jspdf": ">=3"
   },
   "peerDependenciesMeta": {
-    "@serenity-is/corelib": { "optional": false },
-    "@serenity-is/sleekgrid": { "optional": false },
-    "jquery": { "optional": true },
-    "jspdf": { "optional": true }
+    "@serenity-is/corelib": {
+      "optional": false
+    },
+    "@serenity-is/sleekgrid": {
+      "optional": false
+    },
+    "jquery": {
+      "optional": true
+    },
+    "jspdf": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
