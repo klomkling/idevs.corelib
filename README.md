@@ -20,6 +20,52 @@ A comprehensive library of extended components and utilities for the Serenity Fr
 npm install @idevs/corelib
 ```
 
+## Runtime dependencies
+
+`@idevs/corelib` ships against the following peers, declared in your app's
+`package.json`:
+
+| Package | Range | Required |
+|---|---|---|
+| `@serenity-is/corelib` | `>=8.8.6 <9` | yes |
+| `@serenity-is/sleekgrid` | `>=1.9.6 <2` | yes |
+| `jquery` | `>=3.5` | optional (used by UI helpers) |
+| `jspdf` | `>=3` | optional (used by PDF helpers) |
+
+### Compatibility matrix
+
+`@idevs/corelib` tracks the same Serenity major as its server-side
+companion [Idevs.Net.CoreLib](https://www.nuget.org/packages/Idevs.Net.CoreLib).
+Serenity 9.x is intentionally skipped — pick the lane that matches your
+target framework:
+
+| Lane | `Idevs.Net.CoreLib` | .NET TFM | `Serenity.Net.Services` | `@serenity-is/corelib` | `@idevs/corelib` |
+|---|---|---|---|---|---|
+| **Current** | 0.7.x | `net8.0` | `8.8.9` | `>=8.8.6 <9` | **1.x** |
+| **Future** | 0.8+ (planned) | `net10.0` | `10.x` | `>=10.0.0 <11` | **2.x** (planned) |
+
+The TS DTOs in `@idevs/corelib/types/export` mirror the .NET `Idevs.Models.*`
+DTOs; see [MIGRATION.md](./MIGRATION.md) for naming changes between versions.
+
+### Install bridge
+
+You normally do **not** run `npm install @idevs/corelib` yourself. The
+`Idevs.Net.CoreLib` NuGet package ships an MSBuild `.targets` file that runs
+the npm install for you on first `dotnet build`, pinned to the npm major
+matching your `Idevs.Net.CoreLib` version (see the matrix above). It also
+copies CSS assets from `node_modules/@idevs/corelib/css/` into
+`wwwroot/lib/Idevs/Content/`.
+
+To opt out (e.g., air-gapped CI), set in your `.csproj`:
+
+```xml
+<PropertyGroup>
+  <IdevsCoreLibInstallNpmPackage>false</IdevsCoreLibInstallNpmPackage>
+</PropertyGroup>
+```
+
+…and provision `@idevs/corelib` manually.
+
 ## Quick Start
 
 ### Basic Usage
