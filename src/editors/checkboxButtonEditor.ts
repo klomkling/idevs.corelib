@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
- 
 // reference: https://github-wiki-see.page/m/serenity-is/Serenity/wiki/CheckBox-Group-Editor
 
 import {
@@ -18,9 +16,11 @@ import {
 } from '@serenity-is/corelib'
 import type { EditorProps } from '@serenity-is/corelib'
 
+type LookupItem = Record<string, unknown>
+
 export type CheckboxButtonEditorOptions = {
   enumKey?: string
-  enumType?: any
+  enumType?: unknown
   lookupKey?: string
   isStringId?: boolean
 }
@@ -32,7 +32,7 @@ export class CheckboxButtonEditor<
   extends EditorWidget<P>
   implements IReadOnly
 {
-  private _items: Array<{ [key: string]: any }>
+  private _items: LookupItem[]
   private readonly _idField: string
   private readonly _textField: string
   private readonly _isStringId: boolean
@@ -59,7 +59,7 @@ export class CheckboxButtonEditor<
       const lookup = getLookup(this.options.lookupKey ?? '')
       this._idField = lookup.idField
       this._textField = lookup.textField
-      this.set_items(lookup.items as Array<{ [key: string]: any }>)
+      this.set_items(lookup.items as LookupItem[])
     } else {
       const enumType = this.options.enumType || EnumTypeRegistry.get(this.options.enumKey ?? '')
       let enumKey = this.options.enumKey
@@ -107,20 +107,20 @@ export class CheckboxButtonEditor<
     div.appendTo(this.domNode)
   }
 
-  get_items(): Array<{ [key: string]: any }> {
+  get_items(): LookupItem[] {
     return this._items
   }
 
-  get items(): Array<{ [key: string]: any }> {
+  get items(): LookupItem[] {
     return this.get_items()
   }
 
-  set_items(value: Array<{ [key: string]: any }>) {
+  set_items(value: LookupItem[]) {
     this._items = value
     this.renderCheckboxes()
   }
 
-  set items(v: Array<{ [key: string]: any }>) {
+  set items(v: LookupItem[]) {
     this.set_items(v)
   }
 
