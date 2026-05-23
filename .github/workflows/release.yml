@@ -121,15 +121,12 @@ jobs:
       - name: Pre-publish pipeline (typecheck, lint, test, build)
         run: npm run prepublishOnly
 
-      - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "${NODE_AUTH_TOKEN}" ]; then
-            echo "::error::NPM_TOKEN secret is not set in environment 'npm'."
-            exit 1
-          fi
-          npm publish --access public --provenance
+      - name: Publish to npm (Trusted Publishing via OIDC)
+        # No NPM_TOKEN secret needed. The job's `id-token: write` permission +
+        # the package's npm Trusted Publisher config (repo + workflow + environment)
+        # let npm verify this workflow via OIDC.
+        # Configure at: https://www.npmjs.com/package/@idevs/corelib/access
+        run: npm publish --access public --provenance
 
       - name: Create and push tag (skip if exists)
         env:
