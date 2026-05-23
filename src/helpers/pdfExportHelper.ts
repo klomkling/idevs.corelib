@@ -120,32 +120,24 @@ export function doExportPdf(options: IdevsExportOptions): void {
     service: options.service,
     request: request,
   }).then((response: IdevsContentResponse) => {
-    const pdfContent = response.Content
-    const blob = base64ToBlob(pdfContent, response.ContentType)
+    const blob = base64ToBlob(response.Content, response.ContentType)
     const objectUrl = URL.createObjectURL(blob)
 
-    const render = options.render || false;
-    if (render) {
+    if (options.render) {
       showFluentPdfPreview(objectUrl, options.dialogTitle, options.openPrintDialog ?? false)
+      // showFluentPdfPreview is responsible for revoking objectUrl on close.
+      return
     }
-    else {
-      // Download mode
-      const blob = base64ToBlob(pdfContent, response.ContentType)
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      const safeName = __sanitizeDownloadName(options.reportName ?? '')
-      link.download = `${safeName}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
 
-      // Clean up
-      // eslint-disable-next-line no-undef
-      setTimeout(() => {
-        URL.revokeObjectURL(url)
-      }, 1000);
-    }
+    // Download path — reuses objectUrl from above.
+    const link = document.createElement('a')
+    link.href = objectUrl
+    link.download = `${__sanitizeDownloadName(options.reportName ?? '')}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    // eslint-disable-next-line no-undef
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
   });
 }
 
