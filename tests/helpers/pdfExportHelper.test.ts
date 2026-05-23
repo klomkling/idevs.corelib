@@ -1,5 +1,20 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { __buildPreviewDialog, __sanitizeDownloadName } from '../../src/helpers/pdfExportHelper'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  __buildPreviewDialog,
+  __sanitizeDownloadName,
+  doExportPdf,
+} from '../../src/helpers/pdfExportHelper'
+
+vi.mock('@serenity-is/corelib', async () => {
+  const actual = await vi.importActual<typeof import('@serenity-is/corelib')>(
+    '@serenity-is/corelib'
+  )
+  return {
+    ...actual,
+    deepClone: (x: unknown) => JSON.parse(JSON.stringify(x)),
+    serviceCall: vi.fn().mockRejectedValue(new Error('500 Internal Server Error')),
+  }
+})
 
 afterEach(() => {
   document.body.replaceChildren()
@@ -29,5 +44,16 @@ describe('__sanitizeDownloadName', () => {
 
   it('returns a fallback when input is empty', () => {
     expect(__sanitizeDownloadName('')).toBe('report')
+  })
+})
+
+describe('doExportPdf', () => {
+  it('rejects when the server call fails', async () => {
+    await expect(
+      doExportPdf({
+        service: '/svc/foo',
+        reportName: 'r',
+      } as never)
+    ).rejects.toThrow(/500/)
   })
 })

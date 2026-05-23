@@ -81,7 +81,7 @@ export function __buildPreviewDialog(
   return { container, titleEl, iframe }
 }
 
-export function doExportPdf(options: IdevsExportOptions): void {
+export async function doExportPdf(options: IdevsExportOptions): Promise<void> {
   const grid = options.grid
   let request: IdevsExportRequest
 
@@ -116,29 +116,29 @@ export function doExportPdf(options: IdevsExportOptions): void {
   request.logo = options.logo
   request.entity = options.entity
 
-  serviceCall({
+  const response = await serviceCall({
     service: options.service,
     request: request,
-  }).then((response: IdevsContentResponse) => {
-    const blob = base64ToBlob(response.Content, response.ContentType)
-    const objectUrl = URL.createObjectURL(blob)
+  }) as IdevsContentResponse
 
-    if (options.render) {
-      showFluentPdfPreview(objectUrl, options.dialogTitle, options.openPrintDialog ?? false)
-      // showFluentPdfPreview is responsible for revoking objectUrl on close.
-      return
-    }
+  const blob = base64ToBlob(response.Content, response.ContentType)
+  const objectUrl = URL.createObjectURL(blob)
 
-    // Download path — reuses objectUrl from above.
-    const link = document.createElement('a')
-    link.href = objectUrl
-    link.download = `${__sanitizeDownloadName(options.reportName ?? '')}.pdf`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    // eslint-disable-next-line no-undef
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
-  });
+  if (options.render) {
+    showFluentPdfPreview(objectUrl, options.dialogTitle, options.openPrintDialog ?? false)
+    // showFluentPdfPreview is responsible for revoking objectUrl on close.
+    return
+  }
+
+  // Download path — reuses objectUrl from above.
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = `${__sanitizeDownloadName(options.reportName ?? '')}.pdf`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  // eslint-disable-next-line no-undef
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
 }
 
 function showFluentPdfPreview(
