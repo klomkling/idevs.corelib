@@ -221,9 +221,23 @@ function showFluentPdfPreview(
   dialogContainer.appendChild(dialog)
 
   // Add event listeners
+  let isClosed = false
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      closeDialog()
+    }
+  }
+
   const closeDialog = () => {
+    if (isClosed) {
+      return
+    }
+    isClosed = true
+    document.removeEventListener('keydown', handleKeyDown)
     URL.revokeObjectURL(objectUrl)
-    document.body.removeChild(dialogContainer)
+    if (document.body.contains(dialogContainer)) {
+      document.body.removeChild(dialogContainer)
+    }
   }
 
   closeButton.addEventListener('click', closeDialog)
@@ -236,12 +250,6 @@ function showFluentPdfPreview(
   })
 
   // Close on Escape key
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      closeDialog()
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }
   document.addEventListener('keydown', handleKeyDown)
 
   // Add to DOM

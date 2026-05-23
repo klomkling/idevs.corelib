@@ -144,11 +144,17 @@ export function InnerDimensions(el: HTMLElement | null): [number, number] {
 export function neededTarget(el: HTMLElement, target: string): HTMLElement {
   if (target.slice(0, 1) === '.') {
     if (el.classList.contains(target.slice(1)) === false) {
-      el = el.closest(target) as HTMLElement
+      const closestTarget = el.closest(target)
+      if (closestTarget instanceof HTMLElement) {
+        el = closestTarget
+      }
     }
   } else {
     if (el.tagName.toLowerCase() !== target.toLowerCase()) {
-      el = el.closest(target) as HTMLElement
+      const closestTarget = el.closest(target)
+      if (closestTarget instanceof HTMLElement) {
+        el = closestTarget
+      }
     }
   }
   return el
