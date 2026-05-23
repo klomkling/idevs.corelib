@@ -184,16 +184,26 @@ export type dateProxyInputOption = {
 }
 
 export function addDateProxyInput(opt: dateProxyInputOption): HTMLInputElement {
-  const input: HTMLInputElement = document.querySelector(`input[name="${opt.name}"]`)
-  const cloneInput: HTMLInputElement = input.cloneNode(true) as HTMLInputElement
+  const input = document.querySelector<HTMLInputElement>(`input[name="${opt.name}"]`)
+  if (!input) {
+    throw new Error(`addDateProxyInput: input[name="${opt.name}"] not found`)
+  }
+  const parent = input.parentNode
+  if (!parent) {
+    throw new Error(`addDateProxyInput: input[name="${opt.name}"] has no parent`)
+  }
+
+  const cloneInput = input.cloneNode(true) as HTMLInputElement
   cloneInput.setAttribute('name', `${opt.name}-2`)
-  cloneInput.setAttribute('id', `${input.getAttribute('id')}-2`)
+  const originalId = input.getAttribute('id')
+  if (originalId) {
+    cloneInput.setAttribute('id', `${originalId}-2`)
+  }
   cloneInput.setAttribute('readonly', 'readonly')
   cloneInput.classList.remove('customValidate')
   cloneInput.classList.remove('s-DateEditor')
   cloneInput.classList.remove('s-Serenity-DateEditor')
-  cloneInput.classList.remove('dateQ')
-  cloneInput.classList.remove('hasDatepicker')
+
   if (opt.readOnly) {
     cloneInput.style.backgroundColor = 'rgba(var(--s-bright-rgb), 0.02)'
   } else {
@@ -203,7 +213,7 @@ export function addDateProxyInput(opt: dateProxyInputOption): HTMLInputElement {
     cloneInput.style.width = `${opt.width}px`
   }
 
-  input.parentNode.insertBefore(cloneInput, input.nextSibling)
+  parent.insertBefore(cloneInput, input.nextSibling)
   input.classList.add('d-none')
 
   return cloneInput
@@ -214,21 +224,22 @@ export function updateDateProxyValue(
   dateValue: string | Date | null,
   locale?: string
 ): void {
-  let target = document.querySelector(`#${name}-2`) as HTMLInputElement
+  let target = document.querySelector<HTMLInputElement>(`#${name}-2`)
   if (!target) {
-    target = document.querySelector(`input[name=${name}-2]`) as HTMLInputElement
+    target = document.querySelector<HTMLInputElement>(`input[name=${name}-2]`)
   }
-  if (isEmptyOrNull(dateValue?.toString())) {
+  if (!target) {
+    return
+  }
+
+  if (dateValue == null || isEmptyOrNull(dateValue.toString())) {
     target.value = ''
-  } else {
-    if (!locale) {
-      locale = 'en-GB'
-    }
-    target.value = (dateValue.constructor === Date ? dateValue : new Date(dateValue)).toLocaleString(
-      locale,
-      dateStringOption()
-    )
+    return
   }
+
+  const effectiveLocale = locale ?? 'en-GB'
+  const dateObj = dateValue instanceof Date ? dateValue : new Date(dateValue)
+  target.value = dateObj.toLocaleString(effectiveLocale, dateStringOption())
 }
 
 export function toSqlDateString(date: Date): string {
