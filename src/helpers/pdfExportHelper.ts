@@ -1,5 +1,5 @@
 import { deepClone, serviceCall } from '@serenity-is/corelib'
-import { IdevsContentResponse, IdevsExportOptions, IdevsExportRequest } from '../types/export'
+import { IdevsContentResponse, IdevsExportRequest, PdfExportOptions } from '../types/export'
 
 /**
  * Builds the core elements of the PDF preview dialog (overlay container, title,
@@ -81,7 +81,7 @@ export function __buildPreviewDialog(
   return { container, titleEl, iframe }
 }
 
-export async function doExportPdf(options: IdevsExportOptions): Promise<void> {
+export async function doExportPdf(options: PdfExportOptions): Promise<void> {
   const grid = options.grid
   let request: IdevsExportRequest
 

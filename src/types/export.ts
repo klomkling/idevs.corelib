@@ -51,6 +51,24 @@ export type ExportOptions = IdevsExportOptions & {
   onClick?: (e: Event) => void
 }
 
+/**
+ * Options specific to `doExportPdf`. The `render`, `openPrintDialog`,
+ * and `dialogTitle` fields only have effect on the PDF path.
+ * @since 1.1.0
+ */
+export type PdfExportOptions = IdevsExportOptions & {
+  render?: boolean
+  openPrintDialog?: boolean
+  dialogTitle?: string
+}
+
+/**
+ * Options specific to `doExportExcel`. The Excel path uses `postToService`
+ * (form-post redirect), so the PDF render/print flags are ignored.
+ * @since 1.1.0
+ */
+export type ExcelExportOptions = IdevsExportOptions
+
 export type IdevsContentResponse = ServiceResponse & {
   Content: string
   ContentType: string

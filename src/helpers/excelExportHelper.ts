@@ -1,7 +1,7 @@
 import { deepClone, postToService } from '@serenity-is/corelib'
-import { IdevsExportOptions, IdevsExportRequest } from '../globals'
+import { ExcelExportOptions, IdevsExportRequest } from '../types/export'
 
-export async function doExportExcel(options: IdevsExportOptions): Promise<void> {
+export async function doExportExcel(options: ExcelExportOptions): Promise<void> {
   const grid = options.grid
   if (!grid) {
     throw new Error('doExportExcel requires options.grid')
