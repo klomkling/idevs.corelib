@@ -185,6 +185,5 @@ export class CheckboxButtonEditor<
 }
 
 export class idevsEditors {
-   
   public static load() {}
 }

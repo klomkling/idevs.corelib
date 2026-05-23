@@ -283,6 +283,5 @@ export function toEndMonth(date: string): string {
 }
 
 export class globals {
-   
   public static load() {}
 }

@@ -176,6 +176,5 @@ export class DateMonthFormatter implements Formatter {
 }
 
 export class idevsFormatters {
-   
   public static load() {}
 }
