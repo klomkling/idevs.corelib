@@ -203,6 +203,8 @@ export function addDateProxyInput(opt: dateProxyInputOption): HTMLInputElement {
   cloneInput.classList.remove('customValidate')
   cloneInput.classList.remove('s-DateEditor')
   cloneInput.classList.remove('s-Serenity-DateEditor')
+  cloneInput.classList.remove('dateQ')
+  cloneInput.classList.remove('hasDatepicker')
 
   if (opt.readOnly) {
     cloneInput.style.backgroundColor = 'rgba(var(--s-bright-rgb), 0.02)'
