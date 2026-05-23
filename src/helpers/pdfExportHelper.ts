@@ -1,6 +1,73 @@
 import { deepClone, serviceCall } from '@serenity-is/corelib'
 import { IdevsContentResponse, IdevsExportOptions, IdevsExportRequest } from '../types/export'
 
+/**
+ * Builds the core elements of the PDF preview dialog (overlay container, title,
+ * iframe) using DOM APIs only. Caller-supplied `dialogTitle` is rendered via
+ * `textContent`, which escapes HTML and prevents XSS through the title.
+ *
+ * The `__` prefix indicates this helper is exported for testing only and is not
+ * part of the public API.
+ */
+export function __buildPreviewDialog(
+  objectUrl: string,
+  dialogTitle: string | undefined,
+  autoPrint: boolean
+  // eslint-disable-next-line no-undef
+): { container: HTMLDivElement; titleEl: HTMLDivElement; iframe: HTMLIFrameElement } {
+  const container = document.createElement('div')
+  container.className = 'ms-Dialog-overlay'
+  container.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    `
+
+  const titleEl = document.createElement('div')
+  titleEl.className = 'ms-Dialog-title'
+  titleEl.textContent = dialogTitle ?? 'PDF Preview' // safe: textContent escapes
+  titleEl.style.cssText = `
+        margin: 0;
+        font-size: 20px;
+        font-weight: 600;
+        color: #323130;
+    `
+
+  const iframe = document.createElement('iframe')
+  iframe.src = objectUrl
+  iframe.style.cssText = `
+        width: 100%;
+        height: 100%;
+        border: none;
+    `
+
+  if (autoPrint) {
+    let printTriggered = false
+    iframe.onload = () => {
+      if (printTriggered) return
+      printTriggered = true
+      // eslint-disable-next-line no-undef
+      setTimeout(() => {
+        try {
+          iframe.contentWindow?.focus()
+          iframe.contentWindow?.print()
+        } catch (e) {
+          console.warn('Error triggering print:', e)
+        }
+      }, 1000)
+    }
+  }
+
+  return { container, titleEl, iframe }
+}
+
 export function doExportPdf(options: IdevsExportOptions): void {
   const grid = options.grid
   let request: IdevsExportRequest
@@ -73,21 +140,13 @@ function showFluentPdfPreview(
   dialogTitle?: string,
   autoPrint: boolean = false
 ): void {
-  // Create Fluent UI dialog container
-  const dialogContainer = document.createElement('div')
-  dialogContainer.className = 'ms-Dialog-main'
-  dialogContainer.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.4);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 1000;
-    `
+  // Build the core dialog elements (overlay container, title, iframe) via DOM APIs.
+  // Title is set with textContent inside the helper — safe from HTML injection.
+  const { container: dialogContainer, titleEl, iframe } = __buildPreviewDialog(
+    objectUrl,
+    dialogTitle,
+    autoPrint
+  )
 
   // Create dialog content
   const dialog = document.createElement('div')
@@ -116,19 +175,9 @@ function showFluentPdfPreview(
         align-items: center;
     `
 
-  const title = document.createElement('h2')
-  title.className = 'ms-Dialog-title'
-  title.textContent = dialogTitle || 'PDF Preview'
-  title.style.cssText = `
-        margin: 0;
-        font-size: 20px;
-        font-weight: 600;
-        color: #323130;
-    `
-
   const closeButton = document.createElement('button')
   closeButton.className = 'ms-Button ms-Button--icon'
-  closeButton.innerHTML = '✕'
+  closeButton.textContent = '✕'
   closeButton.style.cssText = `
         background: transparent;
         border: none;
@@ -145,7 +194,7 @@ function showFluentPdfPreview(
     closeButton.style.backgroundColor = 'transparent'
   }
 
-  header.appendChild(title)
+  header.appendChild(titleEl)
   header.appendChild(closeButton)
 
   // Create content area
@@ -156,32 +205,6 @@ function showFluentPdfPreview(
         padding: 0;
         overflow: hidden;
     `
-
-  const iframe = document.createElement('iframe')
-  iframe.src = objectUrl
-  iframe.style.cssText = `
-        width: 100%;
-        height: 100%;
-        border: none;
-    `
-  // Auto-print functionality
-  let printTriggered = false
-  iframe.onload = () => {
-    if (autoPrint && !printTriggered) {
-      printTriggered = true
-
-      // Delay to ensure PDF is fully loaded
-      // eslint-disable-next-line no-undef
-      setTimeout(() => {
-        try {
-          iframe.contentWindow?.focus()
-          iframe.contentWindow?.print()
-        } catch (e) {
-          console.warn('Error triggering print:', e)
-        }
-      }, 1000)
-    }
-  }
 
   content.appendChild(iframe)
 
