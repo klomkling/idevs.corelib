@@ -9,6 +9,19 @@ import { IdevsContentResponse, IdevsExportOptions, IdevsExportRequest } from '..
  * The `__` prefix indicates this helper is exported for testing only and is not
  * part of the public API.
  */
+/**
+ * Sanitizes a user-supplied report name for safe use as a download filename.
+ * Replaces any character outside [A-Za-z0-9_.\- ] with `_`, and returns
+ * `'report'` when the input is empty.
+ *
+ * The `__` prefix indicates this helper is exported for testing only and is not
+ * part of the public API.
+ */
+export function __sanitizeDownloadName(name: string): string {
+  if (!name) return 'report'
+  return name.replace(/[^\w.\- ]/g, '_')
+}
+
 export function __buildPreviewDialog(
   objectUrl: string,
   dialogTitle: string | undefined,
@@ -121,7 +134,8 @@ export function doExportPdf(options: IdevsExportOptions): void {
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `${options.reportName}.pdf`
+      const safeName = __sanitizeDownloadName(options.reportName ?? '')
+      link.download = `${safeName}.pdf`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
