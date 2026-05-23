@@ -63,11 +63,21 @@ export type PdfExportOptions = IdevsExportOptions & {
 }
 
 /**
- * Options specific to `doExportExcel`. The Excel path uses `postToService`
- * (form-post redirect), so the PDF render/print flags are ignored.
+ * Options specific to `doExportExcel`. Unlike `IdevsExportOptions` where `grid`
+ * is optional, the Excel path requires a grid (it serializes the columns and
+ * view state). Passing `ExcelExportOptions` without a grid is a compile-time
+ * error; the runtime guard in `doExportExcel` is now a redundant safety net
+ * rather than the primary contract.
+ *
+ * The Excel path uses `postToService` (form-post redirect), so the PDF
+ * render/print flags from `PdfExportOptions` are ignored.
+ *
  * @since 1.1.0
  */
-export type ExcelExportOptions = IdevsExportOptions
+export type ExcelExportOptions = Omit<IdevsExportOptions, 'grid'> & {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  grid: DataGrid<any, any>
+}
 
 export type IdevsContentResponse = ServiceResponse & {
   Content: string
