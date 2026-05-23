@@ -1,0 +1,167 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to (re-)publish (e.g. 1.1.0). Bypasses the tag-exists check; use to recover from a partial run that left the tag in place but missing npm artifacts."
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check version & tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.decide.outputs.version }}
+      should_release: ${{ steps.decide.outputs.should_release }}
+      checkout_ref: ${{ steps.decide.outputs.checkout_ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not read 'version' from package.json"
+            exit 1
+          fi
+          echo "pkg_version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Detected version (package.json on this ref): $VERSION"
+
+      - name: Decide whether to release
+        id: decide
+        env:
+          DISPATCH_VERSION: ${{ github.event.inputs.version }}
+          PKG_VERSION: ${{ steps.version.outputs.pkg_version }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          if [ -z "${DISPATCH_VERSION}" ]; then
+            # Auto-trigger from push:main — compare package.json version to existing tag, skip if it exists.
+            TAG="v${PKG_VERSION}"
+            if git rev-parse "refs/tags/${TAG}" >/dev/null 2>&1; then
+              echo "version=${PKG_VERSION}" >> "$GITHUB_OUTPUT"
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              echo "checkout_ref=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+              echo "Tag ${TAG} already exists; skipping release."
+            else
+              echo "version=${PKG_VERSION}" >> "$GITHUB_OUTPUT"
+              echo "should_release=true" >> "$GITHUB_OUTPUT"
+              echo "checkout_ref=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+              echo "Tag ${TAG} not found; will release."
+            fi
+          else
+            # Dispatch with explicit version — recovery path.
+            TAG="v${DISPATCH_VERSION}"
+            if git rev-parse "refs/tags/${TAG}" >/dev/null 2>&1; then
+              # Tag exists: build from the tagged commit so the published tarball matches the original release.
+              echo "version=${DISPATCH_VERSION}" >> "$GITHUB_OUTPUT"
+              echo "should_release=true" >> "$GITHUB_OUTPUT"
+              echo "checkout_ref=refs/tags/${TAG}" >> "$GITHUB_OUTPUT"
+              echo "Recovery mode: tag ${TAG} exists; release job will checkout that tag."
+            elif [ "${PKG_VERSION}" = "${DISPATCH_VERSION}" ]; then
+              # No tag yet, but package.json on this ref matches — covers partial-run cases where the publish failed before tag-push.
+              echo "version=${DISPATCH_VERSION}" >> "$GITHUB_OUTPUT"
+              echo "should_release=true" >> "$GITHUB_OUTPUT"
+              echo "checkout_ref=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+              echo "Recovery mode: tag ${TAG} not found; package.json matches, building from ${GITHUB_SHA}."
+            else
+              echo "::error::Refusing to release. package.json 'version' on the selected ref is '${PKG_VERSION}', but you requested v${DISPATCH_VERSION} and no matching tag exists. Either re-run the workflow against an existing v${DISPATCH_VERSION} tag, or push the version bump for ${DISPATCH_VERSION} to main."
+              exit 1
+            fi
+          fi
+
+  release:
+    name: Pack, Publish, Tag, Release
+    needs: check
+    if: needs.check.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.check.outputs.checkout_ref }}
+
+      - name: Verify checked-out package.json matches release version
+        env:
+          EXPECTED: ${{ needs.check.outputs.version }}
+        run: |
+          ACTUAL=$(node -p "require('./package.json').version")
+          if [ "${ACTUAL}" != "${EXPECTED}" ]; then
+            echo "::error::package.json 'version' on the checked-out ref is '${ACTUAL}' but the release is for v'${EXPECTED}'. Refusing to publish wrong-version artifacts."
+            exit 1
+          fi
+          echo "Verified: package.json version = ${ACTUAL} matches release v${EXPECTED}."
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install
+        run: npm ci
+
+      - name: Pre-publish pipeline (typecheck, lint, test, build)
+        run: npm run prepublishOnly
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "::error::NPM_TOKEN secret is not set in environment 'npm'."
+            exit 1
+          fi
+          npm publish --access public --provenance
+
+      - name: Create and push tag (skip if exists)
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          TAG="v${VERSION}"
+          if git rev-parse "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} already exists locally; skipping create/push."
+            exit 0
+          fi
+          git fetch --tags
+          if git rev-parse "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} already exists on remote; skipping create/push."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${TAG}" -m "Release ${TAG}"
+          git push origin "${TAG}"
+          echo "Created and pushed tag ${TAG}"
+
+      - name: Create or update GitHub Release (idempotent)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          TAG="v${VERSION}"
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} exists; nothing to do (the npm tarball lives on the registry)."
+          else
+            echo "Creating new release ${TAG}."
+            gh release create "${TAG}" \
+              --title "${TAG}" \
+              --generate-notes
+          fi
