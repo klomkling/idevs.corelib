@@ -1,43 +1,5 @@
 import { first, isEmptyOrNull, tryFirst } from '@serenity-is/corelib'
 
-// Exported for unit testing — avoids HTML interpolation of caller-supplied strings.
-export function buildSideButtonElement(button: {
-  key?: string
-  title?: string
-  icon?: string
-  cssClass?: string
-  disabled?: boolean
-}): HTMLElement {
-  const el = document.createElement('div')
-  const classes = ['tool-button', 'add-button', 'icon-tool-button']
-  if (button.cssClass) {
-    // Split into whitespace-separated tokens and keep only valid CSS class names
-    // (word chars and hyphens). Drops anything that could escape the attribute
-    // (quotes, angle brackets, equals signs from injection attempts).
-    for (const token of button.cssClass.split(/\s+/)) {
-      if (token && /^[\w-]+$/.test(token)) {
-        classes.push(token)
-      }
-    }
-  }
-  if (button.disabled) classes.push('disabled')
-  el.className = classes.join(' ')
-  el.setAttribute('data-idevs-key', button.key ?? '')
-  if (button.title) el.title = button.title // safe: title is a property, not parsed as HTML
-
-  const outer = document.createElement('div')
-  outer.className = 'button-outer'
-  const inner = document.createElement('span')
-  inner.className = 'button-inner'
-  const icon = document.createElement('i')
-  if (button.icon) icon.className = button.icon
-  inner.appendChild(icon)
-  outer.appendChild(inner)
-  el.appendChild(outer)
-
-  return el
-}
-
 export type DropdownToolButtonOptions = {
   title?: string
   cssClass?: string
@@ -68,6 +30,80 @@ export type ToolDropdownSideButtonItem = {
   icon?: string
   onClick?: (e: Event) => void
   disabled?: boolean
+}
+
+// Filters caller-supplied cssClass tokens to safe ones, matching the
+// pattern used by buildSideButtonElement.
+function __sanitizeClassTokens(cssClass: string | undefined): string[] {
+  if (!cssClass) return []
+  const tokens: string[] = []
+  for (const token of cssClass.split(/\s+/)) {
+    if (token && /^[\w-]+$/.test(token)) {
+      tokens.push(token)
+    }
+  }
+  return tokens
+}
+
+// Exported for unit testing — avoids HTML interpolation of caller-supplied strings.
+export function buildSideButtonElement(button: ToolDropdownSideButtonItem): HTMLElement {
+  const el = document.createElement('div')
+  const classes = ['tool-button', 'add-button', 'icon-tool-button']
+  // Split into whitespace-separated tokens and keep only valid CSS class names
+  // (word chars and hyphens). Drops anything that could escape the attribute
+  // (quotes, angle brackets, equals signs from injection attempts).
+  const safeClasses = __sanitizeClassTokens(button.cssClass)
+  classes.push(...safeClasses)
+  if (button.disabled) classes.push('disabled')
+  el.className = classes.join(' ')
+  el.setAttribute('data-idevs-key', button.key ?? '')
+  if (button.title) el.title = button.title // safe: title is a property, not parsed as HTML
+
+  const outer = document.createElement('div')
+  outer.className = 'button-outer'
+  const inner = document.createElement('span')
+  inner.className = 'button-inner'
+  const icon = document.createElement('i')
+  if (button.icon) icon.className = __sanitizeClassTokens(button.icon).join(' ')
+  inner.appendChild(icon)
+  outer.appendChild(inner)
+  el.appendChild(outer)
+
+  return el
+}
+
+// Exported for unit testing — avoids HTML interpolation of caller-supplied strings.
+export function buildDropdownItemElement(button: DropdownToolButtonItem): HTMLElement {
+  const li = document.createElement('li')
+
+  if (button.isDropdownHeader) {
+    const classes = ['dropdown-header', ...__sanitizeClassTokens(button.cssClass)]
+    li.className = classes.join(' ')
+    li.textContent = button.dropdownHeaderTitle ?? ''
+    return li
+  }
+
+  // Preserve original attributes: title, data-idevs-key, disabled class on <li>;
+  // anchor uses cssClass (defaulting to 'dropdown-item'), href="#", icon, and title text.
+  if (button.disabled) li.className = 'disabled'
+  if (button.hint) li.title = button.hint // safe: title is a property, not parsed as HTML
+  li.setAttribute('data-idevs-key', button.key ?? '')
+
+  const a = document.createElement('a')
+  a.href = '#'
+  const anchorClasses = __sanitizeClassTokens(button.cssClass)
+  a.className = anchorClasses.length ? anchorClasses.join(' ') : 'dropdown-item'
+
+  const icon = document.createElement('i')
+  if (button.icon) icon.className = __sanitizeClassTokens(button.icon).join(' ')
+  a.appendChild(icon)
+
+  if (button.title) {
+    a.appendChild(document.createTextNode(` ${button.title}`))
+  }
+
+  li.appendChild(a)
+  return li
 }
 
 export class DropdownToolButton {
@@ -162,21 +198,12 @@ export class DropdownToolButton {
     let dropdownItemElement: JQuery
 
     if (button.isDropdownHeader && !isEmptyOrNull(button.dropdownHeaderTitle ?? '')) {
-      dropdownItemElement = $(
-        `<li class="dropdown-header ${button.cssClass ?? ''}">${button.dropdownHeaderTitle}</li>`
-      )
+      dropdownItemElement = $(buildDropdownItemElement(button))
     } else {
       if (button.isSeparator) {
         dropdownItemElement = $(`<li class="dropdown-divider"></li>`)
       } else {
-        dropdownItemElement = $(`<li class="${button.disabled ? 'disabled' : ''}"
-                title="${button.hint ?? ''}"
-                data-idevs-key="${button.key ?? ''}">
-                    <a href="#" class="${button.cssClass ?? 'dropdown-item'}">
-                        <i class="${button.icon ?? ''}"></i>
-                        ${button.title}
-                    </a>
-                </li>`)
+        dropdownItemElement = $(buildDropdownItemElement(button))
 
         dropdownItemElement.on('click', (e: Event) => {
           e.preventDefault()
