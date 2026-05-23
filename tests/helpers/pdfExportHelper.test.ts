@@ -20,7 +20,7 @@ describe('__buildPreviewDialog', () => {
 
 describe('__sanitizeDownloadName', () => {
   it('strips path separators and control chars', () => {
-    expect(__sanitizeDownloadName('a/b\\c.pdf')).toBe('a_b_c_.pdf')
+    expect(__sanitizeDownloadName('a/b\\c.pdf')).toBe('a_b_c.pdf')
   })
 
   it('preserves safe characters', () => {
