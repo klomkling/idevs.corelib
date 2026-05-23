@@ -142,21 +142,18 @@ export function InnerDimensions(el: HTMLElement | null): [number, number] {
 }
 
 export function neededTarget(el: HTMLElement, target: string): HTMLElement {
-  if (target.slice(0, 1) === '.') {
-    if (el.classList.contains(target.slice(1)) === false) {
-      const closestTarget = el.closest(target)
-      if (closestTarget instanceof HTMLElement) {
-        el = closestTarget
-      }
-    }
-  } else {
-    if (el.tagName.toLowerCase() !== target.toLowerCase()) {
-      const closestTarget = el.closest(target)
-      if (closestTarget instanceof HTMLElement) {
-        el = closestTarget
-      }
+  const isClassSelector = target.slice(0, 1) === '.'
+  const shouldFindClosest = isClassSelector
+    ? el.classList.contains(target.slice(1)) === false
+    : el.tagName.toLowerCase() !== target.toLowerCase()
+
+  if (shouldFindClosest) {
+    const closestTarget = el.closest(target)
+    if (closestTarget instanceof HTMLElement) {
+      return closestTarget
     }
   }
+
   return el
 }
 
