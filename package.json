@@ -10,6 +10,11 @@
       "import": "./dist/index.js",
       "require": "./dist/index.js"
     },
+    "./globals": {
+      "types": "./dist/globals/index.d.ts",
+      "import": "./dist/globals/index.js",
+      "require": "./dist/globals/index.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
