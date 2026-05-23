@@ -45,11 +45,14 @@ export default [
       '@typescript-eslint': tsPlugin,
     },
     rules: {
-      // Basic TypeScript ESLint rules (simplified)
-      '@typescript-eslint/no-unused-vars': ['error', { 
+      // Disable base no-unused-vars; the TS-aware version below handles
+      // TypeScript enum members, overload params, and ambient declarations
+      // correctly (the base rule does not).
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': ['error', {
         argsIgnorePattern: '^_',
         varsIgnorePattern: '^_',
-        ignoreRestSiblings: true 
+        ignoreRestSiblings: true,
       }],
       '@typescript-eslint/consistent-type-definitions': ['error', 'type'],
       '@typescript-eslint/no-explicit-any': 'warn',

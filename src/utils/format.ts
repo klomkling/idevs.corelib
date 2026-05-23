@@ -21,7 +21,7 @@ export function toDecimalString(value: number, precision = 0): string {
     maximumFractionDigits: precision,
   }
 
-  let formatted = Intl.NumberFormat('en-US', options).format(value)
+  const formatted = Intl.NumberFormat('en-US', options).format(value)
   const parsed = parseFloat(formatted.replace(/,/g, '')).toString()
   return Intl.NumberFormat('en-US', options).format(parseFloat(parsed))
 }

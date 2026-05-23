@@ -52,16 +52,16 @@ export class DropdownToolButton {
   }
 
   private getDisablingStateItem(key: string): boolean {
-    if (tryFirst(this.itemDisablingState, x => x.key == key) != null) {
-      return first(this.itemDisablingState, x => x.key == key).disabled || false
+    if (tryFirst(this.itemDisablingState, x => x.key === key) != null) {
+      return first(this.itemDisablingState, x => x.key === key).disabled || false
     }
 
     return false
   }
 
   private setDisablingStateItem(key: string, value: boolean) {
-    if (tryFirst(this.itemDisablingState, x => x.key == key) != null) {
-      first(this.itemDisablingState, x => x.key == key).disabled = value || false
+    if (tryFirst(this.itemDisablingState, x => x.key === key) != null) {
+      first(this.itemDisablingState, x => x.key === key).disabled = value || false
       return
     }
 
@@ -70,7 +70,7 @@ export class DropdownToolButton {
 
   private removeDisablingStateItem(key: string) {
     this.itemDisablingState.some((item, idx) => {
-      if (item.key == key) {
+      if (item.key === key) {
         this.itemDisablingState.splice(idx, 1)
 
         return true
@@ -95,7 +95,7 @@ export class DropdownToolButton {
             <i class="caret"></i>
         </div>
         <ul class="dropdown-menu ${
-          this.options.dropdownMenuPosition == 'right' ? 'dropdown-menu-right' : ''
+          this.options.dropdownMenuPosition === 'right' ? 'dropdown-menu-right' : ''
         }"></ul>
     </div>
 </div>`

@@ -9,13 +9,7 @@ import {
   dateToNumber,
 } from '../utils/format'
 import { toSqlDateString as utilsToSqlDateString } from '../utils/date'
-import {
-  isEmptyOrNull,
-  DataGrid,
-  ListRequest,
-  ServiceResponse,
-  ToolButton,
-} from '@serenity-is/corelib'
+import { isEmptyOrNull } from '@serenity-is/corelib'
 
 /**
  * Global prototype extensions for built-in JavaScript types
@@ -23,18 +17,24 @@ import {
  * @deprecated Consider using the utility functions from utils/format and utils/date instead
  */
 
+// Declaration merging for built-in prototypes requires `interface`; `type`
+// aliases cannot merge into existing global interfaces. Suppress the project's
+// `consistent-type-definitions: type` preference for these three declarations.
 declare global {
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   interface Number {
     toDecimal(precision?: number): string
     toTimeString(): string
   }
 
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   interface String {
     truncate(maxLength?: number): string
     toNumber(): number
     toMethodRound(method?: RoundingMethod): number
   }
 
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   interface Date {
     toSqlDate(): string
     toNumber(): number
@@ -142,7 +142,7 @@ export function InnerDimensions(el: HTMLElement | null): [number, number] {
 }
 
 export function neededTarget(el: HTMLElement, target: string): HTMLElement {
-  if (target.slice(0, 1) == '.') {
+  if (target.slice(0, 1) === '.') {
     if (el.classList.contains(target.slice(1)) === false) {
       el = el.closest(target) as HTMLElement
     }
@@ -224,7 +224,7 @@ export function updateDateProxyValue(
     if (!locale) {
       locale = 'en-GB'
     }
-    target.value = (dateValue.constructor == Date ? dateValue : new Date(dateValue)).toLocaleString(
+    target.value = (dateValue.constructor === Date ? dateValue : new Date(dateValue)).toLocaleString(
       locale,
       dateStringOption()
     )
@@ -270,6 +270,6 @@ export function toEndMonth(date: string): string {
 }
 
 export class globals {
-  // eslint-disable-next-line @typescript-eslint/no-empty-function
+   
   public static load() {}
 }

@@ -14,7 +14,7 @@ export class DateMonthEditor<
   }
 
   get valueAsMonth() {
-    return indexOf(this.months, x => x == this.value)
+    return indexOf(this.months, x => x === this.value)
   }
 
   getItems() {

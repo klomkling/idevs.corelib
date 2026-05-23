@@ -27,7 +27,7 @@ export class ToggleToolButton {
       const target = neededTarget(e.target as HTMLElement, '.idevs-toggle-button')
       if (this.options.altIcon) {
         const icon = target.querySelector(`i`)
-        if (icon.className == this.options.icon) {
+        if (icon.className === this.options.icon) {
           icon.className = this.options.altIcon
         } else {
           icon.className = this.options.icon

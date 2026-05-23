@@ -49,7 +49,7 @@
     "allowUnreachableCode": false,
 
     // Type definitions
-    "types": ["jquery", "jquery.validation", "jqueryui", "toastr"],
+    "types": ["jquery", "jquery.validation", "jqueryui"],
     "typeRoots": ["../node_modules/@types"]
   },
   "include": ["**/*.ts", "**/*.tsx"],

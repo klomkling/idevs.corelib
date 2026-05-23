@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/adjacent-overload-signatures */
+ 
 // reference: https://github-wiki-see.page/m/serenity-is/Serenity/wiki/CheckBox-Group-Editor
 
 import {
@@ -185,6 +185,6 @@ export class CheckboxButtonEditor<
 }
 
 export class idevsEditors {
-  // eslint-disable-next-line @typescript-eslint/no-empty-function
+   
   public static load() {}
 }

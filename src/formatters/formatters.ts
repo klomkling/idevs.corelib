@@ -26,7 +26,7 @@ export class ZeroDisplayFormatter implements Formatter {
 
   static format(src: string, displayText?: string): string {
     const value = parseFloat(String(src || '0').replace(',', ''))
-    if (value == 0) {
+    if (value === 0) {
       return htmlEncode(displayText)
     }
 
@@ -106,9 +106,9 @@ export class CheckboxFormatter implements Formatter {
     trueValueIcon?: string,
     falseValueIcon?: string
   ): string {
-    if (src == trueText) {
+    if (src === trueText) {
       return `<i class="${trueValueIcon} ${cssClass}"></i>`
-    } else if (src == falseText) {
+    } else if (src === falseText) {
       return `<i class="${falseValueIcon} ${cssClass}"></i>`
     } else {
       return htmlEncode(src)
@@ -150,7 +150,7 @@ export class LookupFormatter implements Formatter {
       idList
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .map((x: any) => {
-          const g = items.find(i => i[idField] == x)
+          const g = items.find(i => i[idField] === x)
           if (!g) return x
 
           return htmlEncode(g[textField])
@@ -180,6 +180,6 @@ export class DateMonthFormatter implements Formatter {
 }
 
 export class idevsFormatters {
-  // eslint-disable-next-line @typescript-eslint/no-empty-function
+   
   public static load() {}
 }
