@@ -48,8 +48,7 @@ export type ExportOptions = IdevsExportOptions & {
   hint?: string
   separator?: boolean
   exportType: 'PDF' | 'XLSX'
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onClick?: (e: any) => void
+  onClick?: (e: Event) => void
 }
 
 export type IdevsContentResponse = ServiceResponse & {
