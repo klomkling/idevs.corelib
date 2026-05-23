@@ -26,7 +26,6 @@ export function __buildPreviewDialog(
   objectUrl: string,
   dialogTitle: string | undefined,
   autoPrint: boolean
-  // eslint-disable-next-line no-undef
 ): { container: HTMLDivElement; titleEl: HTMLDivElement; iframe: HTMLIFrameElement } {
   const container = document.createElement('div')
   container.className = 'ms-Dialog-overlay'
@@ -66,7 +65,6 @@ export function __buildPreviewDialog(
     iframe.onload = () => {
       if (printTriggered) return
       printTriggered = true
-      // eslint-disable-next-line no-undef
       setTimeout(() => {
         try {
           iframe.contentWindow?.focus()
@@ -137,7 +135,6 @@ export async function doExportPdf(options: PdfExportOptions): Promise<void> {
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
-  // eslint-disable-next-line no-undef
   setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
 }
 
@@ -250,7 +247,6 @@ function showFluentPdfPreview(
   dialogContainer.style.opacity = '0'
   dialog.style.transform = 'scale(0.9)'
 
-  // eslint-disable-next-line no-undef
   requestAnimationFrame(() => {
     dialogContainer.style.transition = 'opacity 0.2s ease'
     dialog.style.transition = 'transform 0.2s ease'
