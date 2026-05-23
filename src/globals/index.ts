@@ -226,9 +226,9 @@ export function updateDateProxyValue(
   dateValue: string | Date | null,
   locale?: string
 ): void {
-  let target = document.querySelector<HTMLInputElement>(`#${name}-2`)
+  let target = document.getElementById(`${name}-2`) as HTMLInputElement | null
   if (!target) {
-    target = document.querySelector<HTMLInputElement>(`input[name=${name}-2]`)
+    target = document.querySelector<HTMLInputElement>(`input[name="${name}-2"]`)
   }
   if (!target) {
     return
