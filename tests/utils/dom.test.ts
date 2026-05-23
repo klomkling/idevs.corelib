@@ -23,4 +23,8 @@ describe('getElementHeight', () => {
     Object.defineProperty(el, 'clientHeight', { value: 400 })
     expect(getElementHeight(el)).toBe(400)
   })
+
+  it('falls back to window.innerHeight when no element is passed', () => {
+    expect(getElementHeight()).toBe(window.innerHeight)
+  })
 })

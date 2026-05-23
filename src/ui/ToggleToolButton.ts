@@ -49,6 +49,10 @@ export class ToggleToolButton {
       }
 
       if (this.options.onClick) {
+        // jQuery's .on('click', ...) handler types the event data slot as `undefined`,
+        // but the user-supplied onClick callback declares the data slot as `null`.
+        // Both are equivalent at runtime (no data attached); the cast aligns the
+        // static types without changing the public API.
         this.options.onClick(
           e as unknown as JQuery.ClickEvent<HTMLElement, null, HTMLElement, HTMLElement>
         )
