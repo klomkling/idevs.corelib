@@ -54,6 +54,17 @@ export type ExportOptions = IdevsExportOptions & {
 export type IdevsContentResponse = ServiceResponse & {
   Content: string
   ContentType: string
+  /**
+   * Filename the server suggests for the download. Matches the .NET DTO
+   * `Idevs.Models.IdevsContentResponse.DownloadName`.
+   * @since 1.1.0
+   */
+  DownloadName?: string
+  /**
+   * @deprecated since 1.1.0 — the server emits `DownloadName`, not `FileName`.
+   * This field has always been `undefined` at runtime. Use `DownloadName`.
+   * Will be removed in 2.0.0.
+   */
   FileName?: string
 }
 
