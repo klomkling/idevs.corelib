@@ -90,7 +90,7 @@ export function updateDateProxyValue(
     target = document.querySelector(`input[name="${name}-2"]`) as HTMLInputElement
   }
 
-  if (isEmptyOrNull(dateValue?.toString())) {
+  if (dateValue == null || isEmptyOrNull(dateValue.toString())) {
     target.value = ''
   } else {
     const date = dateValue instanceof Date ? dateValue : new Date(dateValue)

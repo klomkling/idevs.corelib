@@ -14,7 +14,7 @@ export class ZeroDisplayFormatter implements Formatter {
   }
 
   get displayText() {
-    return this.props.displayText
+    return this.props.displayText ?? ''
   }
   set displayText(value: string) {
     this.props.displayText = value
@@ -27,7 +27,7 @@ export class ZeroDisplayFormatter implements Formatter {
   static format(src: string, displayText?: string): string {
     const value = parseFloat(String(src || '0').replace(',', ''))
     if (value === 0) {
-      return htmlEncode(displayText)
+      return htmlEncode(displayText ?? '')
     }
 
     return htmlEncode(src)
@@ -53,35 +53,35 @@ export class CheckboxFormatter implements Formatter {
   }
 
   get cssClass() {
-    return this.props.cssClass
+    return this.props.cssClass ?? ''
   }
   set cssClass(value: string) {
     this.props.cssClass = value
   }
 
   get trueText() {
-    return this.props.trueText
+    return this.props.trueText ?? ''
   }
   set trueText(value: string) {
     this.props.trueText = value
   }
 
   get falseText() {
-    return this.props.falseText
+    return this.props.falseText ?? ''
   }
   set falseText(value: string) {
     this.props.falseText = value
   }
 
   get trueValueIcon() {
-    return this.props.trueValueIcon
+    return this.props.trueValueIcon ?? ''
   }
   set trueValueIcon(value: string) {
     this.props.trueValueIcon = value
   }
 
   get falseValueIcon() {
-    return this.props.falseValueIcon
+    return this.props.falseValueIcon ?? ''
   }
   set falseValueIcon(value: string) {
     this.props.falseValueIcon = value
@@ -123,7 +123,7 @@ export class LookupFormatter implements Formatter {
   }
 
   get lookupKey() {
-    return this.props.lookupKey
+    return this.props.lookupKey ?? ''
   }
   set lookupKey(value: string) {
     this.props.lookupKey = value

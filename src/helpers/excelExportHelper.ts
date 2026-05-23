@@ -3,6 +3,9 @@ import { IdevsExportOptions, IdevsExportRequest } from '../globals'
 
 export function doExportExcel(options: IdevsExportOptions): void {
   const grid = options.grid
+  if (!grid) {
+    throw new Error('doExportExcel requires options.grid')
+  }
   const request = deepClone(grid.getView().params) as IdevsExportRequest
   request.Take = 0
   request.Skip = 0

@@ -33,7 +33,7 @@ export type ToolDropdownSideButtonItem = {
 }
 
 export class DropdownToolButton {
-  public element: JQuery = null
+  public element: JQuery
   private isDisabled = false
   private itemDisablingState: { key: string; disabled: boolean }[] = []
   private options: DropdownToolButtonOptions
@@ -123,7 +123,7 @@ export class DropdownToolButton {
 
     let dropdownItemElement: JQuery
 
-    if (button.isDropdownHeader && !isEmptyOrNull(button.dropdownHeaderTitle)) {
+    if (button.isDropdownHeader && !isEmptyOrNull(button.dropdownHeaderTitle ?? '')) {
       dropdownItemElement = $(
         `<li class="dropdown-header ${button.cssClass ?? ''}">${button.dropdownHeaderTitle}</li>`
       )
@@ -156,7 +156,7 @@ export class DropdownToolButton {
             return
           }
 
-          button.onClick(e)
+          button.onClick?.(e)
         })
       }
     }
@@ -291,7 +291,7 @@ export class DropdownToolButton {
         return
       }
 
-      button.onClick(e)
+      button.onClick?.(e)
     })
 
     if (idx === null || typeof idx === 'undefined') {

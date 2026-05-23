@@ -46,22 +46,22 @@ export class CheckboxButtonEditor<
     super(props)
 
     if (
-      isEmptyOrNull(this.options.enumKey) &&
+      isEmptyOrNull(this.options.enumKey ?? '') &&
       this.options.enumType == null &&
-      isEmptyOrNull(this.options.lookupKey)
+      isEmptyOrNull(this.options.lookupKey ?? '')
     ) {
       return
     }
 
-    this._isStringId = this.options.isStringId
+    this._isStringId = this.options.isStringId ?? false
 
-    if (!isEmptyOrNull(this.options.lookupKey)) {
-      const lookup = getLookup(this.options.lookupKey)
+    if (!isEmptyOrNull(this.options.lookupKey ?? '')) {
+      const lookup = getLookup(this.options.lookupKey ?? '')
       this._idField = lookup.idField
       this._textField = lookup.textField
       this.set_items(lookup.items as Array<{ [key: string]: any }>)
     } else {
-      const enumType = this.options.enumType || EnumTypeRegistry.get(this.options.enumKey)
+      const enumType = this.options.enumType || EnumTypeRegistry.get(this.options.enumKey ?? '')
       let enumKey = this.options.enumKey
 
       if (enumKey == null && enumType != null) {
