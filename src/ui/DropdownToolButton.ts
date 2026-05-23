@@ -45,9 +45,14 @@ function __sanitizeClassTokens(cssClass: string | undefined): string[] {
   return tokens
 }
 
-// Exported for unit testing — avoids HTML interpolation of caller-supplied strings.
-// Mirrors the original `buildBaseDropdown` template structure but constructs each
-// node via DOM APIs so caller-supplied title/icon/cssClass cannot inject markup.
+/**
+ * Builds the base dropdown container element used by `DropdownToolButton`.
+ * Mirrors the original `buildBaseDropdown` template structure but constructs
+ * each node via DOM APIs so caller-supplied title/icon/cssClass cannot inject
+ * markup. Exported for unit testing.
+ *
+ * @internal
+ */
 export function __buildDropdownBaseElement(
   options: DropdownToolButtonOptions,
   isDisabled: boolean
@@ -102,7 +107,13 @@ export function __buildDropdownBaseElement(
   return outerWrap
 }
 
-// Exported for unit testing — avoids HTML interpolation of caller-supplied strings.
+/**
+ * Builds the side-button DOM element used by `addSideButtonItem`. Exported
+ * for unit testing; sanitizes caller-supplied class tokens to prevent XSS
+ * through `cssClass`.
+ *
+ * @internal
+ */
 export function buildSideButtonElement(button: ToolDropdownSideButtonItem): HTMLElement {
   const el = document.createElement('div')
   const classes = ['tool-button', 'add-button', 'icon-tool-button']
@@ -129,7 +140,13 @@ export function buildSideButtonElement(button: ToolDropdownSideButtonItem): HTML
   return el
 }
 
-// Exported for unit testing — avoids HTML interpolation of caller-supplied strings.
+/**
+ * Builds an individual dropdown menu item element. Exported for unit testing;
+ * sanitizes caller-supplied class/icon tokens and uses `textContent`/text
+ * nodes so titles and hints cannot inject markup.
+ *
+ * @internal
+ */
 export function buildDropdownItemElement(button: DropdownToolButtonItem): HTMLElement {
   const li = document.createElement('li')
 

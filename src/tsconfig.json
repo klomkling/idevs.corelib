@@ -8,6 +8,10 @@
     "sourceMap": true,
     "removeComments": false,
     "emitBOM": false,
+    // Strip JSDoc-tagged `@internal` exports from emitted .d.ts files.
+    // Keeps test-only helpers (the `__*` and `buildSideButtonElement` family)
+    // out of the published public-API surface.
+    "stripInternal": true,
 
     // Module system
     "module": "CommonJS",

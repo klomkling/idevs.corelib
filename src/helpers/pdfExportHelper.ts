@@ -8,6 +8,8 @@ import { IdevsContentResponse, IdevsExportRequest, PdfExportOptions } from '../t
  *
  * The `__` prefix indicates this helper is exported for testing only and is not
  * part of the public API.
+ *
+ * @internal
  */
 export function __sanitizeDownloadName(name: string): string {
   if (!name) return 'report'
@@ -21,6 +23,8 @@ export function __sanitizeDownloadName(name: string): string {
  *
  * The `__` prefix indicates this helper is exported for testing only and is not
  * part of the public API.
+ *
+ * @internal
  */
 export function __buildPreviewDialog(
   objectUrl: string,
