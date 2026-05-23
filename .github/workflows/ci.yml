@@ -24,7 +24,10 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          # Node 24 ships npm 11.x to match the lockfile we publish.
+          # Node 20/22 ship npm 10.x, which is stricter about some
+          # peer-dep edge cases in vite/esbuild that npm 11 tolerates.
+          node-version: '24'
           cache: 'npm'
 
       - name: Install
