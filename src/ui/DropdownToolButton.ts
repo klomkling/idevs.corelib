@@ -46,6 +46,63 @@ function __sanitizeClassTokens(cssClass: string | undefined): string[] {
 }
 
 // Exported for unit testing — avoids HTML interpolation of caller-supplied strings.
+// Mirrors the original `buildBaseDropdown` template structure but constructs each
+// node via DOM APIs so caller-supplied title/icon/cssClass cannot inject markup.
+export function __buildDropdownBaseElement(
+  options: DropdownToolButtonOptions,
+  isDisabled: boolean
+): HTMLElement {
+  const outerWrap = document.createElement('div')
+  outerWrap.className = 'buttons-inner dropdown'
+  outerWrap.style.overflow = 'visible'
+
+  const inner = document.createElement('div')
+  const innerClasses = [
+    'idevs-tool-dropdown-button',
+    'tool-button',
+    'icon-tool-button',
+    ...__sanitizeClassTokens(options.cssClass),
+  ]
+  if (options.isDropUp) innerClasses.push('dropup')
+  if (isDisabled) innerClasses.push('disabled')
+  inner.className = innerClasses.join(' ')
+  inner.style.cursor = 'unset'
+  outerWrap.appendChild(inner)
+
+  const toggle = document.createElement('div')
+  const toggleClasses = ['button-outer', 'dropdown-toggle']
+  if (isDisabled) toggleClasses.push('disabled')
+  toggle.className = toggleClasses.join(' ')
+  toggle.setAttribute('data-bs-toggle', 'dropdown')
+  toggle.style.cursor = 'pointer'
+  inner.appendChild(toggle)
+
+  const buttonInner = document.createElement('span')
+  buttonInner.className = 'button-inner'
+  toggle.appendChild(buttonInner)
+
+  const icon = document.createElement('i')
+  if (options.icon) icon.className = __sanitizeClassTokens(options.icon).join(' ')
+  buttonInner.appendChild(icon)
+
+  if (options.title) {
+    buttonInner.appendChild(document.createTextNode(` ${options.title}`))
+  }
+
+  const caret = document.createElement('i')
+  caret.className = 'caret'
+  toggle.appendChild(caret)
+
+  const menu = document.createElement('ul')
+  const menuClasses = ['dropdown-menu']
+  if (options.dropdownMenuPosition === 'right') menuClasses.push('dropdown-menu-right')
+  menu.className = menuClasses.join(' ')
+  inner.appendChild(menu)
+
+  return outerWrap
+}
+
+// Exported for unit testing — avoids HTML interpolation of caller-supplied strings.
 export function buildSideButtonElement(button: ToolDropdownSideButtonItem): HTMLElement {
   const el = document.createElement('div')
   const classes = ['tool-button', 'add-button', 'icon-tool-button']
@@ -153,28 +210,7 @@ export class DropdownToolButton {
   }
 
   private buildBaseDropdown(): JQuery {
-    const dropdownTemplate = `<div class="buttons-inner dropdown" style="overflow: visible">
-    <div class="idevs-tool-dropdown-button tool-button icon-tool-button ${
-      this.options.cssClass ?? ''
-    } ${this.options.isDropUp ? 'dropup' : ''} ${
-      this.isDisabled ? 'disabled' : ''
-    }" style="cursor: unset;">
-        <div class="button-outer dropdown-toggle ${this.isDisabled ? 'disabled' : ''}"
-        data-bs-toggle="dropdown"
-        style="cursor: pointer;">
-            <span class="button-inner">
-                <i class="${this.options.icon}"></i>
-                ${this.options.title ?? ''}
-            </span>
-            <i class="caret"></i>
-        </div>
-        <ul class="dropdown-menu ${
-          this.options.dropdownMenuPosition === 'right' ? 'dropdown-menu-right' : ''
-        }"></ul>
-    </div>
-</div>`
-
-    return $(dropdownTemplate)
+    return $(__buildDropdownBaseElement(this.options, this.isDisabled))
   }
 
   public addDropdownItems(buttons: DropdownToolButtonItem[]) {
