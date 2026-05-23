@@ -2,14 +2,6 @@ import { deepClone, serviceCall } from '@serenity-is/corelib'
 import { IdevsContentResponse, IdevsExportRequest, PdfExportOptions } from '../types/export'
 
 /**
- * Builds the core elements of the PDF preview dialog (overlay container, title,
- * iframe) using DOM APIs only. Caller-supplied `dialogTitle` is rendered via
- * `textContent`, which escapes HTML and prevents XSS through the title.
- *
- * The `__` prefix indicates this helper is exported for testing only and is not
- * part of the public API.
- */
-/**
  * Sanitizes a user-supplied report name for safe use as a download filename.
  * Replaces any character outside [A-Za-z0-9_.\- ] with `_`, and returns
  * `'report'` when the input is empty.
@@ -22,6 +14,14 @@ export function __sanitizeDownloadName(name: string): string {
   return name.replace(/[^\w.\- ]/g, '_')
 }
 
+/**
+ * Builds the core elements of the PDF preview dialog (overlay container, title,
+ * iframe) using DOM APIs only. Caller-supplied `dialogTitle` is rendered via
+ * `textContent`, which escapes HTML and prevents XSS through the title.
+ *
+ * The `__` prefix indicates this helper is exported for testing only and is not
+ * part of the public API.
+ */
 export function __buildPreviewDialog(
   objectUrl: string,
   dialogTitle: string | undefined,

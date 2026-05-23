@@ -2,9 +2,18 @@
 
 ## 1.0.x → 1.1.0
 
-**No breaking changes.** This release is a foundation update — strict TS slice
-enabled, Vitest harness, GitHub Actions CI, XSS fixes, async export helpers,
-and additive wire-contract fixes. Consumers on `^1.0.5` upgrade with
+**No runtime breaking changes.** All changes from 1.0.5 preserve the runtime
+behaviour of existing code paths. One TypeScript-signature change is worth
+noting: `doExportPdf` and `doExportExcel` now return `Promise<void>` instead
+of `void`. Existing call sites that did not previously expect a return value
+still work at runtime (the promise is dropped), but callers whose code passes
+either function to a `() => void` callback slot will see a TS error because
+`() => Promise<void>` is no longer assignable. Either await the call, attach
+`.catch()`, or wrap in a void-returning lambda.
+
+This release is otherwise a foundation update — strict TS slice enabled,
+Vitest harness, GitHub Actions CI, XSS fixes, async export helpers, and
+additive wire-contract fixes. Consumers on `^1.0.5` upgrade with
 `npm update @idevs/corelib`.
 
 ### Recommended migration steps
