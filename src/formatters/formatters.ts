@@ -134,9 +134,8 @@ export class LookupFormatter implements Formatter {
   }
 
   static format(src: unknown, lookupKey?: string): string {
-    if (src == null) return ''
+    if (!src) return ''
     const key = String(src)
-    if (!key) return ''
 
     if (!lookupKey) return key
 
