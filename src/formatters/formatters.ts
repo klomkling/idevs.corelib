@@ -133,30 +133,27 @@ export class LookupFormatter implements Formatter {
     return LookupFormatter.format(ctx.value, this.lookupKey)
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  static format(src: any, lookupKey?: string): string {
-    if (!src) return ''
+  static format(src: unknown, lookupKey?: string): string {
+    if (src == null) return ''
+    const key = String(src)
+    if (!key) return ''
 
-    if (!lookupKey) return src
+    if (!lookupKey) return key
 
     const lookup = getLookup(lookupKey)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const items = lookup.items as Array<{ [key: string]: any }>
+    const items = lookup.items as Array<Record<string, unknown>>
     const idField = lookup.idField
     const textField = lookup.textField
-    const idList = src.toString().split(',')
+    const idList = key.split(',')
 
-    return (
-      idList
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map((x: any) => {
-          const g = items.find(i => i[idField] === x)
-          if (!g) return x
+    return idList
+      .map(x => {
+        const g = items.find(i => i[idField] === x)
+        if (!g) return x
 
-          return htmlEncode(g[textField])
-        })
-        .join(', ')
-    )
+        return htmlEncode(g[textField])
+      })
+      .join(', ')
   }
 }
 
