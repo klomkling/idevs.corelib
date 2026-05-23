@@ -10,7 +10,16 @@ export function buildSideButtonElement(button: {
 }): HTMLElement {
   const el = document.createElement('div')
   const classes = ['tool-button', 'add-button', 'icon-tool-button']
-  if (button.cssClass) classes.push(button.cssClass)
+  if (button.cssClass) {
+    // Split into whitespace-separated tokens and keep only valid CSS class names
+    // (word chars and hyphens). Drops anything that could escape the attribute
+    // (quotes, angle brackets, equals signs from injection attempts).
+    for (const token of button.cssClass.split(/\s+/)) {
+      if (token && /^[\w-]+$/.test(token)) {
+        classes.push(token)
+      }
+    }
+  }
   if (button.disabled) classes.push('disabled')
   el.className = classes.join(' ')
   el.setAttribute('data-idevs-key', button.key ?? '')
