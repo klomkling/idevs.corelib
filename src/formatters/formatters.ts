@@ -147,7 +147,7 @@ export class LookupFormatter implements Formatter {
 
     return idList
       .map(x => {
-        const g = items.find(i => i[idField] === x)
+        const g = items.find(i => String(i[idField]) === x)
         if (!g) return x
 
         return htmlEncode(g[textField])
