@@ -1,5 +1,34 @@
 import { first, isEmptyOrNull, tryFirst } from '@serenity-is/corelib'
 
+// Exported for unit testing — avoids HTML interpolation of caller-supplied strings.
+export function buildSideButtonElement(button: {
+  key?: string
+  title?: string
+  icon?: string
+  cssClass?: string
+  disabled?: boolean
+}): HTMLElement {
+  const el = document.createElement('div')
+  const classes = ['tool-button', 'add-button', 'icon-tool-button']
+  if (button.cssClass) classes.push(button.cssClass)
+  if (button.disabled) classes.push('disabled')
+  el.className = classes.join(' ')
+  el.setAttribute('data-idevs-key', button.key ?? '')
+  if (button.title) el.title = button.title // safe: title is a property, not parsed as HTML
+
+  const outer = document.createElement('div')
+  outer.className = 'button-outer'
+  const inner = document.createElement('span')
+  inner.className = 'button-inner'
+  const icon = document.createElement('i')
+  if (button.icon) icon.className = button.icon
+  inner.appendChild(icon)
+  outer.appendChild(inner)
+  el.appendChild(outer)
+
+  return el
+}
+
 export type DropdownToolButtonOptions = {
   title?: string
   cssClass?: string
@@ -264,19 +293,7 @@ export class DropdownToolButton {
       this.setDisablingStateItem(button.key, button.disabled || false)
     }
 
-    const sideButtonTemplate = `<div class="tool-button add-button icon-tool-button ${
-      button.cssClass ?? ''
-    } ${button.disabled ? 'disabled' : ''}"
-        data-idevs-key="${button.key ?? ''}"
-        title="${button.title ?? ''}">
-            <div class="button-outer">
-                <span class="button-inner">
-                    <i class="${button.icon ?? ''}"></i>
-                </span>
-            </div>
-        </div>`
-
-    const sideButton = $(sideButtonTemplate)
+    const sideButton = $(buildSideButtonElement(button))
 
     sideButton.on('click', (e: Event) => {
       e.preventDefault()
