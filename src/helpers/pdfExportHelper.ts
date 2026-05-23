@@ -6,12 +6,11 @@ import { IdevsContentResponse, IdevsExportRequest, PdfExportOptions } from '../t
  * Replaces any character outside [A-Za-z0-9_.\- ] with `_`, and returns
  * `'report'` when the input is empty.
  *
- * The `__` prefix indicates this helper is exported for testing only and is not
- * part of the public API.
+ * The `__` prefix indicates this is an internal helper.
  *
  * @internal
  */
-export function __sanitizeDownloadName(name: string): string {
+function __sanitizeDownloadName(name: string): string {
   if (!name) return 'report'
   return name.replace(/[^\w.\- ]/g, '_')
 }
@@ -21,12 +20,11 @@ export function __sanitizeDownloadName(name: string): string {
  * iframe) using DOM APIs only. Caller-supplied `dialogTitle` is rendered via
  * `textContent`, which escapes HTML and prevents XSS through the title.
  *
- * The `__` prefix indicates this helper is exported for testing only and is not
- * part of the public API.
+ * The `__` prefix indicates this is an internal helper.
  *
  * @internal
  */
-export function __buildPreviewDialog(
+function __buildPreviewDialog(
   objectUrl: string,
   dialogTitle: string | undefined,
   autoPrint: boolean
