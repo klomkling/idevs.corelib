@@ -14,7 +14,7 @@ export class ZeroDisplayFormatter implements Formatter {
   }
 
   get displayText() {
-    return this.props.displayText
+    return this.props.displayText ?? ''
   }
   set displayText(value: string) {
     this.props.displayText = value
@@ -26,8 +26,8 @@ export class ZeroDisplayFormatter implements Formatter {
 
   static format(src: string, displayText?: string): string {
     const value = parseFloat(String(src || '0').replace(',', ''))
-    if (value == 0) {
-      return htmlEncode(displayText)
+    if (value === 0) {
+      return htmlEncode(displayText ?? '')
     }
 
     return htmlEncode(src)
@@ -53,35 +53,35 @@ export class CheckboxFormatter implements Formatter {
   }
 
   get cssClass() {
-    return this.props.cssClass
+    return this.props.cssClass ?? ''
   }
   set cssClass(value: string) {
     this.props.cssClass = value
   }
 
   get trueText() {
-    return this.props.trueText
+    return this.props.trueText ?? ''
   }
   set trueText(value: string) {
     this.props.trueText = value
   }
 
   get falseText() {
-    return this.props.falseText
+    return this.props.falseText ?? ''
   }
   set falseText(value: string) {
     this.props.falseText = value
   }
 
   get trueValueIcon() {
-    return this.props.trueValueIcon
+    return this.props.trueValueIcon ?? ''
   }
   set trueValueIcon(value: string) {
     this.props.trueValueIcon = value
   }
 
   get falseValueIcon() {
-    return this.props.falseValueIcon
+    return this.props.falseValueIcon ?? ''
   }
   set falseValueIcon(value: string) {
     this.props.falseValueIcon = value
@@ -106,9 +106,9 @@ export class CheckboxFormatter implements Formatter {
     trueValueIcon?: string,
     falseValueIcon?: string
   ): string {
-    if (src == trueText) {
+    if (src === trueText) {
       return `<i class="${trueValueIcon} ${cssClass}"></i>`
-    } else if (src == falseText) {
+    } else if (src === falseText) {
       return `<i class="${falseValueIcon} ${cssClass}"></i>`
     } else {
       return htmlEncode(src)
@@ -123,7 +123,7 @@ export class LookupFormatter implements Formatter {
   }
 
   get lookupKey() {
-    return this.props.lookupKey
+    return this.props.lookupKey ?? ''
   }
   set lookupKey(value: string) {
     this.props.lookupKey = value
@@ -133,30 +133,26 @@ export class LookupFormatter implements Formatter {
     return LookupFormatter.format(ctx.value, this.lookupKey)
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  static format(src: any, lookupKey?: string): string {
+  static format(src: unknown, lookupKey?: string): string {
     if (!src) return ''
+    const key = String(src)
 
-    if (!lookupKey) return src
+    if (!lookupKey) return key
 
     const lookup = getLookup(lookupKey)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const items = lookup.items as Array<{ [key: string]: any }>
+    const items = lookup.items as Array<Record<string, unknown>>
     const idField = lookup.idField
     const textField = lookup.textField
-    const idList = src.toString().split(',')
+    const idList = key.split(',')
 
-    return (
-      idList
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map((x: any) => {
-          const g = items.find(i => i[idField] == x)
-          if (!g) return x
+    return idList
+      .map(x => {
+        const g = items.find(i => String(i[idField]) === x)
+        if (!g) return x
 
-          return htmlEncode(g[textField])
-        })
-        .join(', ')
-    )
+        return htmlEncode(g[textField])
+      })
+      .join(', ')
   }
 }
 
@@ -180,6 +176,5 @@ export class DateMonthFormatter implements Formatter {
 }
 
 export class idevsFormatters {
-  // eslint-disable-next-line @typescript-eslint/no-empty-function
   public static load() {}
 }

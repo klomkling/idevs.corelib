@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-05-23
+
+### Added
+- **Vitest test harness** with jsdom environment; unit tests for `utils/format`, `utils/dom`, `globals` date proxy helpers, `DropdownToolButton`, and `pdfExportHelper`.
+- **GitHub Actions CI** (`.github/workflows/ci.yml`) running typecheck, lint, test, and build on PRs and pushes to `main`.
+- **`@idevs/corelib/globals` subpath export** for opt-in prototype patches. Prepares for the 2.0.0 removal of the implicit side-effect import from the root entry.
+- **`IdevsContentResponse.DownloadName`** field matching the .NET DTO. The existing `FileName` is preserved as a `@deprecated` alias.
+- **`PdfExportOptions` / `ExcelExportOptions`** typed variants of `IdevsExportOptions` documenting which client-only flags apply to each path.
+- **`MIGRATION.md`** with the deprecation guide and the 2.0.0 outlook.
+
+### Changed
+- `doExportPdf` and `doExportExcel` now return `Promise<void>` and surface server errors. Existing callers continue to work but should `await` (or `.catch`) to capture failures.
+- `prepublishOnly` now gates publish behind typecheck, lint, and tests.
+- `@serenity-is/corelib` and `@serenity-is/sleekgrid` are now `peerDependencies` (range `>=8.8.6 <9` / `>=1.9.6 <2`) instead of regular `dependencies`. `jquery` and `jspdf` are declared as optional peers.
+- TypeScript `strictNullChecks` is now enabled. The rest of the strict-family flags remain off pending further migration.
+
+### Fixed
+- **XSS** in `DropdownToolButton.addSideButtonItem` — replaced HTML template interpolation with DOM-API construction (`buildSideButtonElement`), with invalid CSS-class tokens dropped as defense-in-depth.
+- **XSS** in `pdfExportHelper.showFluentPdfPreview` — dialog title now uses `textContent` via the new `__buildPreviewDialog` helper. Bonus: the close-button glyph also moved from `innerHTML` to `textContent`.
+- **Filename injection** in `doExportPdf` download — `options.reportName` is sanitized before use as `<a download>` via the new `__sanitizeDownloadName` helper.
+- **Unhandled promise rejection** in `doExportPdf` — `serviceCall(...)` rejections are now propagated to the caller (function returns `Promise<void>` instead of `void`).
+- **Null-deref risk** in `addDateProxyInput` and `updateDateProxyValue` when DOM queries return `null`. Note: `addDateProxyInput` now throws `Error('addDateProxyInput: input[name="..."] not found')` instead of crashing with a TypeError when the source input is missing.
+- **Duplicate Blob/objectURL** creation in `doExportPdf` download branch.
+- Replaced `any` with typed signatures in `IdevsExportOptions.onClick` (`(e: Event) => void`), `LookupFormatter.format(src: unknown, ...)`, and `CheckboxButtonEditor` lookup items (`Record<string, unknown>`).
+- Stale `toastr` entry removed from `tsconfig.types` (the `@types/toastr` package wasn't installed and broke `tsc --noEmit`).
+
+### Deprecated
+- `IdevsContentResponse.FileName` — use `DownloadName` (matches the server DTO). Removal in 2.0.0.
+- Implicit `import './globals'` in the root entry — opt in via `import '@idevs/corelib/globals'` instead. Removal in 2.0.0.
+
+### Compatibility
+- **No breaking changes.** Consumers on `^1.0.5` upgrade by running `npm update @idevs/corelib`.
+- A future 2.0.0 will remove the deprecated paths and align wire DTO casing with the .NET DTO (`viewName` → `ViewName`, etc.). See `MIGRATION.md`.
+
+---
+
 ## [1.0.5] - 2025-01-26
 
 ### Changed

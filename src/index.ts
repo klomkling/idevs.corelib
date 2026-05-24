@@ -8,5 +8,16 @@ export * from './helpers'
 export * from './utils'
 export * from './types'
 
-// Global prototype extensions (import side-effects only)
+/**
+ * @deprecated since 1.1.0 — prototype extensions auto-load via the root entry
+ * point for backwards compatibility, but this will be removed in 2.0.0.
+ *
+ * To prepare your code for 2.0.0:
+ *
+ *   // Replace existing usage with explicit imports of the utility functions:
+ *   import { toSqlDateString } from '@idevs/corelib'   // instead of date.toSqlDate()
+ *
+ *   // Or, if you still want the prototype patches, opt in explicitly:
+ *   import '@idevs/corelib/globals'
+ */
 import './globals'

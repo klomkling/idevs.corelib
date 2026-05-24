@@ -85,15 +85,19 @@ export function updateDateProxyValue(
   dateValue: string | Date | null,
   locale = 'en-GB'
 ): void {
-  let target = document.querySelector(`#${name}-2`) as HTMLInputElement
+  let target = document.getElementById(`${name}-2`) as HTMLInputElement | null
   if (!target) {
-    target = document.querySelector(`input[name="${name}-2"]`) as HTMLInputElement
+    target = document.querySelector<HTMLInputElement>(`input[name="${name}-2"]`)
+  }
+  if (!target) {
+    return
   }
 
-  if (isEmptyOrNull(dateValue?.toString())) {
+  if (dateValue == null || isEmptyOrNull(dateValue.toString())) {
     target.value = ''
-  } else {
-    const date = dateValue instanceof Date ? dateValue : new Date(dateValue)
-    target.value = date.toLocaleString(locale, dateStringOptions())
+    return
   }
+
+  const date = dateValue instanceof Date ? dateValue : new Date(dateValue)
+  target.value = date.toLocaleString(locale, dateStringOptions())
 }

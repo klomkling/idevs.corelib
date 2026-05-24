@@ -1,7 +1,87 @@
 import { deepClone, serviceCall } from '@serenity-is/corelib'
-import { IdevsContentResponse, IdevsExportOptions, IdevsExportRequest } from '../types/export'
+import { IdevsContentResponse, IdevsExportRequest, PdfExportOptions } from '../types/export'
 
-export function doExportPdf(options: IdevsExportOptions): void {
+/**
+ * Sanitizes a user-supplied report name for safe use as a download filename.
+ * Replaces any character outside [A-Za-z0-9_.\- ] with `_`, and returns
+ * `'report'` when the input is empty.
+ *
+ * The `__` prefix indicates this is an internal helper.
+ *
+ * @internal
+ */
+function __sanitizeDownloadName(name: string): string {
+  if (!name) return 'report'
+  return name.replace(/[^\w.\- ]/g, '_')
+}
+
+/**
+ * Builds the core elements of the PDF preview dialog (overlay container, title,
+ * iframe) using DOM APIs only. Caller-supplied `dialogTitle` is rendered via
+ * `textContent`, which escapes HTML and prevents XSS through the title.
+ *
+ * The `__` prefix indicates this is an internal helper.
+ *
+ * @internal
+ */
+function __buildPreviewDialog(
+  objectUrl: string,
+  dialogTitle: string | undefined,
+  autoPrint: boolean
+): { container: HTMLDivElement; titleEl: HTMLDivElement; iframe: HTMLIFrameElement } {
+  const container = document.createElement('div')
+  container.className = 'ms-Dialog-overlay'
+  container.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    `
+
+  const titleEl = document.createElement('div')
+  titleEl.className = 'ms-Dialog-title'
+  titleEl.textContent = dialogTitle ?? 'PDF Preview' // safe: textContent escapes
+  titleEl.style.cssText = `
+        margin: 0;
+        font-size: 20px;
+        font-weight: 600;
+        color: #323130;
+    `
+
+  const iframe = document.createElement('iframe')
+  iframe.src = objectUrl
+  iframe.style.cssText = `
+        width: 100%;
+        height: 100%;
+        border: none;
+    `
+
+  if (autoPrint) {
+    let printTriggered = false
+    iframe.onload = () => {
+      if (printTriggered) return
+      printTriggered = true
+      setTimeout(() => {
+        try {
+          iframe.contentWindow?.focus()
+          iframe.contentWindow?.print()
+        } catch (e) {
+          console.warn('Error triggering print:', e)
+        }
+      }, 1000)
+    }
+  }
+
+  return { container, titleEl, iframe }
+}
+
+export async function doExportPdf(options: PdfExportOptions): Promise<void> {
   const grid = options.grid
   let request: IdevsExportRequest
 
@@ -36,36 +116,28 @@ export function doExportPdf(options: IdevsExportOptions): void {
   request.logo = options.logo
   request.entity = options.entity
 
-  serviceCall({
+  const response = await serviceCall({
     service: options.service,
     request: request,
-  }).then((response: IdevsContentResponse) => {
-    const pdfContent = response.Content
-    const blob = base64ToBlob(pdfContent, response.ContentType)
-    const objectUrl = URL.createObjectURL(blob)
+  }) as IdevsContentResponse
 
-    const render = options.render || false;
-    if (render) {
-      showFluentPdfPreview(objectUrl, options.dialogTitle, options.openPrintDialog ?? false)
-    }
-    else {
-      // Download mode
-      const blob = base64ToBlob(pdfContent, response.ContentType)
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `${options.reportName}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+  const blob = base64ToBlob(response.Content, response.ContentType)
+  const objectUrl = URL.createObjectURL(blob)
 
-      // Clean up
-      // eslint-disable-next-line no-undef
-      setTimeout(() => {
-        URL.revokeObjectURL(url)
-      }, 1000);
-    }
-  });
+  if (options.render) {
+    showFluentPdfPreview(objectUrl, options.dialogTitle, options.openPrintDialog ?? false)
+    // showFluentPdfPreview is responsible for revoking objectUrl on close.
+    return
+  }
+
+  // Download path — reuses objectUrl from above.
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = `${__sanitizeDownloadName(options.reportName ?? '')}.pdf`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
 }
 
 function showFluentPdfPreview(
@@ -73,21 +145,13 @@ function showFluentPdfPreview(
   dialogTitle?: string,
   autoPrint: boolean = false
 ): void {
-  // Create Fluent UI dialog container
-  const dialogContainer = document.createElement('div')
-  dialogContainer.className = 'ms-Dialog-main'
-  dialogContainer.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.4);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 1000;
-    `
+  // Build the core dialog elements (overlay container, title, iframe) via DOM APIs.
+  // Title is set with textContent inside the helper — safe from HTML injection.
+  const { container: dialogContainer, titleEl, iframe } = __buildPreviewDialog(
+    objectUrl,
+    dialogTitle,
+    autoPrint
+  )
 
   // Create dialog content
   const dialog = document.createElement('div')
@@ -116,19 +180,9 @@ function showFluentPdfPreview(
         align-items: center;
     `
 
-  const title = document.createElement('h2')
-  title.className = 'ms-Dialog-title'
-  title.textContent = dialogTitle || 'PDF Preview'
-  title.style.cssText = `
-        margin: 0;
-        font-size: 20px;
-        font-weight: 600;
-        color: #323130;
-    `
-
   const closeButton = document.createElement('button')
   closeButton.className = 'ms-Button ms-Button--icon'
-  closeButton.innerHTML = '✕'
+  closeButton.textContent = '✕'
   closeButton.style.cssText = `
         background: transparent;
         border: none;
@@ -145,7 +199,7 @@ function showFluentPdfPreview(
     closeButton.style.backgroundColor = 'transparent'
   }
 
-  header.appendChild(title)
+  header.appendChild(titleEl)
   header.appendChild(closeButton)
 
   // Create content area
@@ -157,32 +211,6 @@ function showFluentPdfPreview(
         overflow: hidden;
     `
 
-  const iframe = document.createElement('iframe')
-  iframe.src = objectUrl
-  iframe.style.cssText = `
-        width: 100%;
-        height: 100%;
-        border: none;
-    `
-  // Auto-print functionality
-  let printTriggered = false
-  iframe.onload = () => {
-    if (autoPrint && !printTriggered) {
-      printTriggered = true
-
-      // Delay to ensure PDF is fully loaded
-      // eslint-disable-next-line no-undef
-      setTimeout(() => {
-        try {
-          iframe.contentWindow?.focus()
-          iframe.contentWindow?.print()
-        } catch (e) {
-          console.warn('Error triggering print:', e)
-        }
-      }, 1000)
-    }
-  }
-
   content.appendChild(iframe)
 
   // Assemble dialog
@@ -191,9 +219,23 @@ function showFluentPdfPreview(
   dialogContainer.appendChild(dialog)
 
   // Add event listeners
+  let isClosed = false
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      closeDialog()
+    }
+  }
+
   const closeDialog = () => {
+    if (isClosed) {
+      return
+    }
+    isClosed = true
+    document.removeEventListener('keydown', handleKeyDown)
     URL.revokeObjectURL(objectUrl)
-    document.body.removeChild(dialogContainer)
+    if (document.body.contains(dialogContainer)) {
+      document.body.removeChild(dialogContainer)
+    }
   }
 
   closeButton.addEventListener('click', closeDialog)
@@ -206,12 +248,6 @@ function showFluentPdfPreview(
   })
 
   // Close on Escape key
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      closeDialog()
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }
   document.addEventListener('keydown', handleKeyDown)
 
   // Add to DOM
@@ -221,7 +257,6 @@ function showFluentPdfPreview(
   dialogContainer.style.opacity = '0'
   dialog.style.transform = 'scale(0.9)'
 
-  // eslint-disable-next-line no-undef
   requestAnimationFrame(() => {
     dialogContainer.style.transition = 'opacity 0.2s ease'
     dialog.style.transition = 'transform 0.2s ease'

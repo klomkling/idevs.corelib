@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, ready_for_review, synchronize]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # Node 24 ships npm 11.x to match the lockfile we publish.
+          # Node 20/22 ship npm 10.x, which is stricter about some
+          # peer-dep edge cases in vite/esbuild that npm 11 tolerates.
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  request-copilot-review:
+    name: Request Copilot Review
+    # Only on PR transitions that warrant a fresh review request.
+    # Skip on `synchronize` (push to PR branch) so Copilot isn't re-requested
+    # on every push, and skip on `push: main` (no PR context).
+    if: >-
+      github.event_name == 'pull_request' &&
+      (github.event.action == 'opened' ||
+       github.event.action == 'reopened' ||
+       github.event.action == 'ready_for_review')
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Request Copilot as reviewer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          # Soft-fail: a non-zero exit here shouldn't break CI. If Copilot
+          # code review isn't enabled on the repo, or the user has no Copilot
+          # seat, the API call fails — we want a warning, not a red CI.
+          set +e
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${REPO}/pulls/${PR_NUMBER}/requested_reviewers" \
+            -f "reviewers[]=copilot-pull-request-reviewer"
+          status=$?
+          if [ $status -ne 0 ]; then
+            echo "::warning::Failed to request Copilot review. Ensure Copilot code review is enabled for the repo (Settings → Code & automation → Copilot) and that the calling identity has a Copilot seat."
+          fi
+          exit 0

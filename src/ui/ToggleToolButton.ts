@@ -12,7 +12,7 @@ export type ToggleToolButtonOptions = {
 }
 
 export class ToggleToolButton {
-  public element: JQuery = null
+  public element: JQuery
   private isDisabled = false
   private options: ToggleToolButtonOptions
 
@@ -27,10 +27,10 @@ export class ToggleToolButton {
       const target = neededTarget(e.target as HTMLElement, '.idevs-toggle-button')
       if (this.options.altIcon) {
         const icon = target.querySelector(`i`)
-        if (icon.className == this.options.icon) {
+        if (icon && icon.className === this.options.icon) {
           icon.className = this.options.altIcon
-        } else {
-          icon.className = this.options.icon
+        } else if (icon) {
+          icon.className = this.options.icon ?? ''
         }
       }
 
@@ -49,7 +49,13 @@ export class ToggleToolButton {
       }
 
       if (this.options.onClick) {
-        this.options.onClick(e)
+        // jQuery's .on('click', ...) handler types the event data slot as `undefined`,
+        // but the user-supplied onClick callback declares the data slot as `null`.
+        // Both are equivalent at runtime (no data attached); the cast aligns the
+        // static types without changing the public API.
+        this.options.onClick(
+          e as unknown as JQuery.ClickEvent<HTMLElement, null, HTMLElement, HTMLElement>
+        )
       }
     })
 

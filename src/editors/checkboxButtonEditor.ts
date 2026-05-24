@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/adjacent-overload-signatures */
 // reference: https://github-wiki-see.page/m/serenity-is/Serenity/wiki/CheckBox-Group-Editor
 
 import {
@@ -18,9 +16,11 @@ import {
 } from '@serenity-is/corelib'
 import type { EditorProps } from '@serenity-is/corelib'
 
+type LookupItem = Record<string, unknown>
+
 export type CheckboxButtonEditorOptions = {
   enumKey?: string
-  enumType?: any
+  enumType?: unknown
   lookupKey?: string
   isStringId?: boolean
 }
@@ -32,7 +32,7 @@ export class CheckboxButtonEditor<
   extends EditorWidget<P>
   implements IReadOnly
 {
-  private _items: Array<{ [key: string]: any }>
+  private _items: LookupItem[]
   private readonly _idField: string
   private readonly _textField: string
   private readonly _isStringId: boolean
@@ -46,22 +46,22 @@ export class CheckboxButtonEditor<
     super(props)
 
     if (
-      isEmptyOrNull(this.options.enumKey) &&
+      isEmptyOrNull(this.options.enumKey ?? '') &&
       this.options.enumType == null &&
-      isEmptyOrNull(this.options.lookupKey)
+      isEmptyOrNull(this.options.lookupKey ?? '')
     ) {
       return
     }
 
-    this._isStringId = this.options.isStringId
+    this._isStringId = this.options.isStringId ?? false
 
-    if (!isEmptyOrNull(this.options.lookupKey)) {
-      const lookup = getLookup(this.options.lookupKey)
+    if (!isEmptyOrNull(this.options.lookupKey ?? '')) {
+      const lookup = getLookup(this.options.lookupKey ?? '')
       this._idField = lookup.idField
       this._textField = lookup.textField
-      this.set_items(lookup.items as Array<{ [key: string]: any }>)
+      this.set_items(lookup.items as LookupItem[])
     } else {
-      const enumType = this.options.enumType || EnumTypeRegistry.get(this.options.enumKey)
+      const enumType = this.options.enumType || EnumTypeRegistry.get(this.options.enumKey ?? '')
       let enumKey = this.options.enumKey
 
       if (enumKey == null && enumType != null) {
@@ -107,20 +107,20 @@ export class CheckboxButtonEditor<
     div.appendTo(this.domNode)
   }
 
-  get_items(): Array<{ [key: string]: any }> {
+  get_items(): LookupItem[] {
     return this._items
   }
 
-  get items(): Array<{ [key: string]: any }> {
+  get items(): LookupItem[] {
     return this.get_items()
   }
 
-  set_items(value: Array<{ [key: string]: any }>) {
+  set_items(value: LookupItem[]) {
     this._items = value
     this.renderCheckboxes()
   }
 
-  set items(v: Array<{ [key: string]: any }>) {
+  set items(v: LookupItem[]) {
     this.set_items(v)
   }
 
@@ -185,6 +185,5 @@ export class CheckboxButtonEditor<
 }
 
 export class idevsEditors {
-  // eslint-disable-next-line @typescript-eslint/no-empty-function
   public static load() {}
 }

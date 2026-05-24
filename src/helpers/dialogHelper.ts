@@ -12,9 +12,8 @@ export function removeSelect2ClearButton(...targets: string[]): void {
 }
 
 export function EmailValidator(value: string): string | null {
-  // eslint-disable-next-line no-useless-escape
   const filter =
-    /^([\w-\.]+)@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.)|(([\w-]+\.)+))([a-zA-Z]{2,4}|[0-9]{1,3})(\]?)$/
+    /^([\w.-]+)@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.)|(([\w-]+\.)+))([a-zA-Z]{2,4}|[0-9]{1,3})(\]?)$/
   return filter.test(value) ? null : 'Invalid email address'
 }
 
@@ -78,7 +77,7 @@ export class DialogHelper {
   public enabledEditItem<T>(form: T, ...targets: string[]): void {
     const frm = form as { [key: string]: object }
     for (let i = 0; i < targets.length; i++) {
-      if (frm[targets[i]].constructor.name == 'LookupEditor') {
+      if (frm[targets[i]].constructor.name === 'LookupEditor') {
         ;(frm[targets[i]] as HTMLInputElement).readOnly = false
       } else {
         $(`input[name="${targets[i]}"]`).prop('disabled', false).removeClass('readonly')
@@ -93,7 +92,7 @@ export class DialogHelper {
         continue
       }
 
-      if (frm[targets[i]].constructor.name == 'LookupEditor') {
+      if (frm[targets[i]].constructor.name === 'LookupEditor') {
         ;(frm[targets[i]] as HTMLInputElement).readOnly = true
       } else {
         $(`input[name="${targets[i]}"]`).prop('disabled', true).addClass('readonly')
@@ -105,7 +104,7 @@ export class DialogHelper {
     const frm = form as { [key: string]: object }
     for (let i = 0; i < targets.length; i++) {
       const className = frm[targets[i]].constructor.name
-      if (className == 'LookupEditor') {
+      if (className === 'LookupEditor') {
         ;(frm[targets[i]] as HTMLInputElement).readOnly = true
       } else {
         $(`input[name="${targets[i]}"]`).val('')

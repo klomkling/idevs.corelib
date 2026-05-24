@@ -8,6 +8,10 @@
     "sourceMap": true,
     "removeComments": false,
     "emitBOM": false,
+    // Strip JSDoc-tagged `@internal` exports from emitted .d.ts files.
+    // Keeps test-only helpers (the `__*` and `buildSideButtonElement` family)
+    // out of the published public-API surface.
+    "stripInternal": true,
 
     // Module system
     "module": "CommonJS",
@@ -18,7 +22,7 @@
     // Strict type checking (gradually enabled)
     "strict": false,
     "noImplicitAny": false,
-    "strictNullChecks": false,
+    "strictNullChecks": true,
     "strictFunctionTypes": false,
     "strictBindCallApply": false,
     "strictPropertyInitialization": false,
@@ -49,7 +53,7 @@
     "allowUnreachableCode": false,
 
     // Type definitions
-    "types": ["jquery", "jquery.validation", "jqueryui", "toastr"],
+    "types": ["jquery", "jquery.validation", "jqueryui"],
     "typeRoots": ["../node_modules/@types"]
   },
   "include": ["**/*.ts", "**/*.tsx"],

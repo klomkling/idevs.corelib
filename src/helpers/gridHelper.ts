@@ -49,7 +49,7 @@ export class GridHelper {
    */
   public getButtons(buttons: ToolButton[], ...removeButtons: string[]): ToolButton[] {
     for (const btn of removeButtons) {
-      const id = indexOf(buttons, x => x.cssClass == btn)
+      const id = indexOf(buttons, x => x.cssClass === btn)
       if (id >= 0) {
         buttons.splice(id, 1)
       }
@@ -91,7 +91,7 @@ export class GridHelper {
     }
 
     // get dialog mode
-    grid.openDialogsAsPanel = (options?.dialogMode ?? true) == false
+    grid.openDialogsAsPanel = (options?.dialogMode ?? true) === false
   }
 }
 

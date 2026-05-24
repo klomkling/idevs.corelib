@@ -9,13 +9,7 @@ import {
   dateToNumber,
 } from '../utils/format'
 import { toSqlDateString as utilsToSqlDateString } from '../utils/date'
-import {
-  isEmptyOrNull,
-  DataGrid,
-  ListRequest,
-  ServiceResponse,
-  ToolButton,
-} from '@serenity-is/corelib'
+import { isEmptyOrNull } from '@serenity-is/corelib'
 
 /**
  * Global prototype extensions for built-in JavaScript types
@@ -23,18 +17,24 @@ import {
  * @deprecated Consider using the utility functions from utils/format and utils/date instead
  */
 
+// Declaration merging for built-in prototypes requires `interface`; `type`
+// aliases cannot merge into existing global interfaces. Suppress the project's
+// `consistent-type-definitions: type` preference for these three declarations.
 declare global {
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   interface Number {
     toDecimal(precision?: number): string
     toTimeString(): string
   }
 
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   interface String {
     truncate(maxLength?: number): string
     toNumber(): number
     toMethodRound(method?: RoundingMethod): number
   }
 
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   interface Date {
     toSqlDate(): string
     toNumber(): number
@@ -142,15 +142,18 @@ export function InnerDimensions(el: HTMLElement | null): [number, number] {
 }
 
 export function neededTarget(el: HTMLElement, target: string): HTMLElement {
-  if (target.slice(0, 1) == '.') {
-    if (el.classList.contains(target.slice(1)) === false) {
-      el = el.closest(target) as HTMLElement
-    }
-  } else {
-    if (el.tagName.toLowerCase() !== target.toLowerCase()) {
-      el = el.closest(target) as HTMLElement
+  const isClassSelector = target.slice(0, 1) === '.'
+  const shouldFindClosest = isClassSelector
+    ? el.classList.contains(target.slice(1)) === false
+    : el.tagName.toLowerCase() !== target.toLowerCase()
+
+  if (shouldFindClosest) {
+    const closestTarget = el.closest(target)
+    if (closestTarget instanceof HTMLElement) {
+      return closestTarget
     }
   }
+
   return el
 }
 
@@ -184,16 +187,28 @@ export type dateProxyInputOption = {
 }
 
 export function addDateProxyInput(opt: dateProxyInputOption): HTMLInputElement {
-  const input: HTMLInputElement = document.querySelector(`input[name="${opt.name}"]`)
-  const cloneInput: HTMLInputElement = input.cloneNode(true) as HTMLInputElement
+  const input = document.querySelector<HTMLInputElement>(`input[name="${opt.name}"]`)
+  if (!input) {
+    throw new Error(`addDateProxyInput: input[name="${opt.name}"] not found`)
+  }
+  const parent = input.parentNode
+  if (!parent) {
+    throw new Error(`addDateProxyInput: input[name="${opt.name}"] has no parent`)
+  }
+
+  const cloneInput = input.cloneNode(true) as HTMLInputElement
   cloneInput.setAttribute('name', `${opt.name}-2`)
-  cloneInput.setAttribute('id', `${input.getAttribute('id')}-2`)
+  const originalId = input.getAttribute('id')
+  if (originalId) {
+    cloneInput.setAttribute('id', `${originalId}-2`)
+  }
   cloneInput.setAttribute('readonly', 'readonly')
   cloneInput.classList.remove('customValidate')
   cloneInput.classList.remove('s-DateEditor')
   cloneInput.classList.remove('s-Serenity-DateEditor')
   cloneInput.classList.remove('dateQ')
   cloneInput.classList.remove('hasDatepicker')
+
   if (opt.readOnly) {
     cloneInput.style.backgroundColor = 'rgba(var(--s-bright-rgb), 0.02)'
   } else {
@@ -203,7 +218,7 @@ export function addDateProxyInput(opt: dateProxyInputOption): HTMLInputElement {
     cloneInput.style.width = `${opt.width}px`
   }
 
-  input.parentNode.insertBefore(cloneInput, input.nextSibling)
+  parent.insertBefore(cloneInput, input.nextSibling)
   input.classList.add('d-none')
 
   return cloneInput
@@ -214,21 +229,22 @@ export function updateDateProxyValue(
   dateValue: string | Date | null,
   locale?: string
 ): void {
-  let target = document.querySelector(`#${name}-2`) as HTMLInputElement
+  let target = document.getElementById(`${name}-2`) as HTMLInputElement | null
   if (!target) {
-    target = document.querySelector(`input[name=${name}-2]`) as HTMLInputElement
+    target = document.querySelector<HTMLInputElement>(`input[name="${name}-2"]`)
   }
-  if (isEmptyOrNull(dateValue?.toString())) {
+  if (!target) {
+    return
+  }
+
+  if (dateValue == null || isEmptyOrNull(dateValue.toString())) {
     target.value = ''
-  } else {
-    if (!locale) {
-      locale = 'en-GB'
-    }
-    target.value = (dateValue.constructor == Date ? dateValue : new Date(dateValue)).toLocaleString(
-      locale,
-      dateStringOption()
-    )
+    return
   }
+
+  const effectiveLocale = locale ?? 'en-GB'
+  const dateObj = dateValue instanceof Date ? dateValue : new Date(dateValue)
+  target.value = dateObj.toLocaleString(effectiveLocale, dateStringOption())
 }
 
 export function toSqlDateString(date: Date): string {
@@ -270,6 +286,5 @@ export function toEndMonth(date: string): string {
 }
 
 export class globals {
-  // eslint-disable-next-line @typescript-eslint/no-empty-function
   public static load() {}
 }

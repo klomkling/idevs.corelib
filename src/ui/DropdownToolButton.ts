@@ -32,8 +32,161 @@ export type ToolDropdownSideButtonItem = {
   disabled?: boolean
 }
 
+// Filters caller-supplied cssClass tokens to safe ones, matching the
+// pattern used by buildSideButtonElement.
+function __sanitizeClassTokens(cssClass: string | undefined): string[] {
+  if (!cssClass) return []
+  const tokens: string[] = []
+  for (const token of cssClass.split(/\s+/)) {
+    if (token && /^[\w-]+$/.test(token)) {
+      tokens.push(token)
+    }
+  }
+  return tokens
+}
+
+/**
+ * Builds the base dropdown container element used by `DropdownToolButton`.
+ * Mirrors the original `buildBaseDropdown` template structure but constructs
+ * each node via DOM APIs so caller-supplied title/icon/cssClass cannot inject
+ * markup. Exported for unit testing.
+ *
+ * @internal
+ */
+export function __buildDropdownBaseElement(
+  options: DropdownToolButtonOptions,
+  isDisabled: boolean
+): HTMLElement {
+  const outerWrap = document.createElement('div')
+  outerWrap.className = 'buttons-inner dropdown'
+  outerWrap.style.overflow = 'visible'
+
+  const inner = document.createElement('div')
+  const innerClasses = [
+    'idevs-tool-dropdown-button',
+    'tool-button',
+    'icon-tool-button',
+    ...__sanitizeClassTokens(options.cssClass),
+  ]
+  if (options.isDropUp) innerClasses.push('dropup')
+  if (isDisabled) innerClasses.push('disabled')
+  inner.className = innerClasses.join(' ')
+  inner.style.cursor = 'unset'
+  outerWrap.appendChild(inner)
+
+  const toggle = document.createElement('div')
+  const toggleClasses = ['button-outer', 'dropdown-toggle']
+  if (isDisabled) toggleClasses.push('disabled')
+  toggle.className = toggleClasses.join(' ')
+  toggle.setAttribute('data-bs-toggle', 'dropdown')
+  toggle.style.cursor = 'pointer'
+  inner.appendChild(toggle)
+
+  const buttonInner = document.createElement('span')
+  buttonInner.className = 'button-inner'
+  toggle.appendChild(buttonInner)
+
+  const icon = document.createElement('i')
+  if (options.icon) icon.className = __sanitizeClassTokens(options.icon).join(' ')
+  buttonInner.appendChild(icon)
+
+  if (options.title) {
+    buttonInner.appendChild(document.createTextNode(` ${options.title}`))
+  }
+
+  const caret = document.createElement('i')
+  caret.className = 'caret'
+  toggle.appendChild(caret)
+
+  const menu = document.createElement('ul')
+  const menuClasses = ['dropdown-menu']
+  if (options.dropdownMenuPosition === 'right') menuClasses.push('dropdown-menu-right')
+  menu.className = menuClasses.join(' ')
+  inner.appendChild(menu)
+
+  return outerWrap
+}
+
+/**
+ * Builds the side-button DOM element used by `addSideButtonItem`. Exported
+ * for unit testing; sanitizes caller-supplied class tokens to prevent XSS
+ * through `cssClass`.
+ *
+ * @internal
+ */
+export function buildSideButtonElement(button: ToolDropdownSideButtonItem): HTMLElement {
+  const el = document.createElement('div')
+  const classes = ['tool-button', 'add-button', 'icon-tool-button']
+  // Split into whitespace-separated tokens and keep only valid CSS class names
+  // (word chars and hyphens). Drops anything that could escape the attribute
+  // (quotes, angle brackets, equals signs from injection attempts).
+  const safeClasses = __sanitizeClassTokens(button.cssClass)
+  classes.push(...safeClasses)
+  if (button.disabled) classes.push('disabled')
+  el.className = classes.join(' ')
+  el.setAttribute('data-idevs-key', button.key ?? '')
+  if (button.title) el.title = button.title // safe: title is a property, not parsed as HTML
+
+  const outer = document.createElement('div')
+  outer.className = 'button-outer'
+  const inner = document.createElement('span')
+  inner.className = 'button-inner'
+  const icon = document.createElement('i')
+  if (button.icon) icon.className = __sanitizeClassTokens(button.icon).join(' ')
+  inner.appendChild(icon)
+  outer.appendChild(inner)
+  el.appendChild(outer)
+
+  return el
+}
+
+/**
+ * Builds an individual dropdown menu item element. Exported for unit testing;
+ * sanitizes caller-supplied class/icon tokens and uses `textContent`/text
+ * nodes so titles and hints cannot inject markup.
+ *
+ * @internal
+ */
+export function buildDropdownItemElement(button: DropdownToolButtonItem): HTMLElement {
+  const li = document.createElement('li')
+  const dropdownHeaderTitle = button.dropdownHeaderTitle
+
+  if (
+    button.isDropdownHeader &&
+    typeof dropdownHeaderTitle === 'string' &&
+    !isEmptyOrNull(dropdownHeaderTitle)
+  ) {
+    const classes = ['dropdown-header', ...__sanitizeClassTokens(button.cssClass)]
+    li.className = classes.join(' ')
+    li.textContent = dropdownHeaderTitle
+    return li
+  }
+
+  // Preserve original attributes: title, data-idevs-key, disabled class on <li>;
+  // anchor uses cssClass (defaulting to 'dropdown-item'), href="#", icon, and title text.
+  if (button.disabled) li.className = 'disabled'
+  if (button.hint) li.title = button.hint // safe: title is a property, not parsed as HTML
+  li.setAttribute('data-idevs-key', button.key ?? '')
+
+  const a = document.createElement('a')
+  a.href = '#'
+  const anchorClasses = __sanitizeClassTokens(button.cssClass)
+  a.className = anchorClasses.length ? anchorClasses.join(' ') : 'dropdown-item'
+
+  const icon = document.createElement('i')
+  if (button.icon) icon.className = __sanitizeClassTokens(button.icon).join(' ')
+  a.appendChild(icon)
+
+  if (button.title) {
+    a.appendChild(document.createTextNode(` ${button.title}`))
+  }
+
+  li.appendChild(a)
+  return li
+}
+
 export class DropdownToolButton {
-  public element: JQuery = null
+  public element: JQuery
   private isDisabled = false
   private itemDisablingState: { key: string; disabled: boolean }[] = []
   private options: DropdownToolButtonOptions
@@ -52,16 +205,16 @@ export class DropdownToolButton {
   }
 
   private getDisablingStateItem(key: string): boolean {
-    if (tryFirst(this.itemDisablingState, x => x.key == key) != null) {
-      return first(this.itemDisablingState, x => x.key == key).disabled || false
+    if (tryFirst(this.itemDisablingState, x => x.key === key) != null) {
+      return first(this.itemDisablingState, x => x.key === key).disabled || false
     }
 
     return false
   }
 
   private setDisablingStateItem(key: string, value: boolean) {
-    if (tryFirst(this.itemDisablingState, x => x.key == key) != null) {
-      first(this.itemDisablingState, x => x.key == key).disabled = value || false
+    if (tryFirst(this.itemDisablingState, x => x.key === key) != null) {
+      first(this.itemDisablingState, x => x.key === key).disabled = value || false
       return
     }
 
@@ -70,7 +223,7 @@ export class DropdownToolButton {
 
   private removeDisablingStateItem(key: string) {
     this.itemDisablingState.some((item, idx) => {
-      if (item.key == key) {
+      if (item.key === key) {
         this.itemDisablingState.splice(idx, 1)
 
         return true
@@ -79,28 +232,7 @@ export class DropdownToolButton {
   }
 
   private buildBaseDropdown(): JQuery {
-    const dropdownTemplate = `<div class="buttons-inner dropdown" style="overflow: visible">
-    <div class="idevs-tool-dropdown-button tool-button icon-tool-button ${
-      this.options.cssClass ?? ''
-    } ${this.options.isDropUp ? 'dropup' : ''} ${
-      this.isDisabled ? 'disabled' : ''
-    }" style="cursor: unset;">
-        <div class="button-outer dropdown-toggle ${this.isDisabled ? 'disabled' : ''}"
-        data-bs-toggle="dropdown"
-        style="cursor: pointer;">
-            <span class="button-inner">
-                <i class="${this.options.icon}"></i>
-                ${this.options.title ?? ''}
-            </span>
-            <i class="caret"></i>
-        </div>
-        <ul class="dropdown-menu ${
-          this.options.dropdownMenuPosition == 'right' ? 'dropdown-menu-right' : ''
-        }"></ul>
-    </div>
-</div>`
-
-    return $(dropdownTemplate)
+    return $(__buildDropdownBaseElement(this.options, this.isDisabled))
   }
 
   public addDropdownItems(buttons: DropdownToolButtonItem[]) {
@@ -123,22 +255,15 @@ export class DropdownToolButton {
 
     let dropdownItemElement: JQuery
 
-    if (button.isDropdownHeader && !isEmptyOrNull(button.dropdownHeaderTitle)) {
-      dropdownItemElement = $(
-        `<li class="dropdown-header ${button.cssClass ?? ''}">${button.dropdownHeaderTitle}</li>`
-      )
+    if (button.isDropdownHeader && !isEmptyOrNull(button.dropdownHeaderTitle ?? '')) {
+      dropdownItemElement = $(buildDropdownItemElement(button))
     } else {
       if (button.isSeparator) {
-        dropdownItemElement = $(`<li class="dropdown-divider"></li>`)
+        const separator = document.createElement('li')
+        separator.className = 'dropdown-divider'
+        dropdownItemElement = $(separator)
       } else {
-        dropdownItemElement = $(`<li class="${button.disabled ? 'disabled' : ''}"
-                title="${button.hint ?? ''}"
-                data-idevs-key="${button.key ?? ''}">
-                    <a href="#" class="${button.cssClass ?? 'dropdown-item'}">
-                        <i class="${button.icon ?? ''}"></i>
-                        ${button.title}
-                    </a>
-                </li>`)
+        dropdownItemElement = $(buildDropdownItemElement(button))
 
         dropdownItemElement.on('click', (e: Event) => {
           e.preventDefault()
@@ -156,7 +281,7 @@ export class DropdownToolButton {
             return
           }
 
-          button.onClick(e)
+          button.onClick?.(e)
         })
       }
     }
@@ -264,19 +389,7 @@ export class DropdownToolButton {
       this.setDisablingStateItem(button.key, button.disabled || false)
     }
 
-    const sideButtonTemplate = `<div class="tool-button add-button icon-tool-button ${
-      button.cssClass ?? ''
-    } ${button.disabled ? 'disabled' : ''}"
-        data-idevs-key="${button.key ?? ''}"
-        title="${button.title ?? ''}">
-            <div class="button-outer">
-                <span class="button-inner">
-                    <i class="${button.icon ?? ''}"></i>
-                </span>
-            </div>
-        </div>`
-
-    const sideButton = $(sideButtonTemplate)
+    const sideButton = $(buildSideButtonElement(button))
 
     sideButton.on('click', (e: Event) => {
       e.preventDefault()
@@ -291,7 +404,7 @@ export class DropdownToolButton {
         return
       }
 
-      button.onClick(e)
+      button.onClick?.(e)
     })
 
     if (idx === null || typeof idx === 'undefined') {
