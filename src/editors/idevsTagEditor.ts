@@ -203,9 +203,7 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
   }
 
   protected handleTabKey() {
-    if (this.domNode.value !== null) {
-      this.formatDisplayValue()
-    }
+    this.formatDisplayValue()
   }
 
   protected handleArrowDownKey(e: KeyboardEvent) {
@@ -241,7 +239,7 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
   protected selectItemFromEvent(e: MouseEvent) {
     const target = e.target as HTMLElement | null
     if (!target) return
-    const itemValue = target.innerText
+    const itemValue = target.textContent ?? ''
     this.set_value(itemValue)
     this.selectItem(itemValue)
   }
@@ -492,8 +490,11 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
     const items = this.dropdownContainer.querySelectorAll<HTMLElement>('.dropdown-item')
     let hasVisibleItems = false
 
+    // textContent avoids the layout flush that innerText triggers on every
+    // keystroke; for filtering, the rendered-text semantics of innerText
+    // aren't needed.
     items.forEach(el => {
-      const isVisible = el.innerText.toLowerCase().includes(searchText)
+      const isVisible = (el.textContent ?? '').toLowerCase().includes(searchText)
       el.style.display = isVisible ? 'block' : 'none'
       hasVisibleItems = hasVisibleItems || isVisible
     })

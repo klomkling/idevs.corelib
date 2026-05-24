@@ -45,9 +45,14 @@ export class IdevsDateEditor<
     if (!fp) return
     const oldValue = this.get_value()
 
-    fp.input.value = this.formatDateForFlatpickr(value, fp.config.dateFormat)
-    if (fp.altInput) {
-      fp.altInput.value = this.formatDateForFlatpickr(value, fp.config.altFormat)
+    // Route through flatpickr's API so `selectedDates` stays in sync and the
+    // calendar UI reflects the programmatic value. `false` suppresses
+    // flatpickr's own onChange — we fire the Serenity change event below
+    // exactly once if the resolved value actually changed.
+    if (value) {
+      fp.setDate(value, false, fp.config.dateFormat)
+    } else {
+      fp.clear(false)
     }
 
     const newValue = this.get_value()
