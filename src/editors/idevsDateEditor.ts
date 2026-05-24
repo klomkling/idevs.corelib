@@ -23,10 +23,21 @@ const ERROR_CLASSES = ['error', 'invalid', 'validation-error'] as const
 export class IdevsDateEditor<
   P extends IdevsDateEditorOptions = IdevsDateEditorOptions,
 > extends DateEditor<P> {
+  private classObserver?: MutationObserver
+
   constructor(props: EditorProps<P>) {
     super(props)
     this.initialize()
     this.updateElementReadOnly()
+  }
+
+  destroy() {
+    this.classObserver?.disconnect()
+    this.classObserver = undefined
+    if (this.domNode) {
+      Fluent(this.domNode).off('validationerror.idevsdate')
+    }
+    super.destroy()
   }
 
   set_value(value: string) {
@@ -69,14 +80,14 @@ export class IdevsDateEditor<
   protected initialize(): void {
     if (!this.domNode) return
 
-    const observer = new MutationObserver(mutations => {
+    this.classObserver = new MutationObserver(mutations => {
       mutations.forEach(mutation => {
         if (mutation.attributeName === 'class') {
           this.syncValidationClasses()
         }
       })
     })
-    observer.observe(this.domNode, { attributes: true })
+    this.classObserver.observe(this.domNode, { attributes: true })
 
     Fluent(this.domNode).on('validationerror.idevsdate', () => {
       this.syncValidationClasses()

@@ -20,7 +20,8 @@ const REQUIRED_MARKER_ATTR = 'data-idevs-required-marker'
 
 function tagItemToText(item: TagItem): string {
   if (typeof item === 'object' && item !== null) {
-    return item.toString() || item.text || ''
+    if (item.text) return item.text
+    return item.toString()
   }
   return String(item)
 }
@@ -287,12 +288,8 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
   }
 
   public formatDisplayValue() {
-    const oldValue = this.domNode.value
-
-    if (oldValue !== this.domNode.value) {
-      this.domNode.dispatchEvent(new Event('change', { bubbles: true }))
-      this.domNode.dispatchEvent(new Event('input', { bubbles: true }))
-    }
+    // Stub for subclass override. Subclasses that mutate `domNode.value` here
+    // are responsible for dispatching 'change' / 'input' events themselves.
   }
 
   protected formatDisplayText(value?: string | number | null): string {
@@ -572,26 +569,31 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
   }
 
   protected updateRequiredState(isRequired: boolean) {
-    const label = this.domNode.parentElement?.querySelector('label')
-    if (!label) return
-
-    const existingMarker = label.querySelector(`sup[${REQUIRED_MARKER_ATTR}]`)
-
     if (isRequired) {
-      if (!existingMarker) {
+      this.domNode.classList.add('required')
+      this.domNode.setAttribute('required', '')
+      this.domNode.setAttribute('aria-required', 'true')
+    } else {
+      this.domNode.classList.remove('required')
+      this.domNode.removeAttribute('required')
+      this.domNode.removeAttribute('aria-required')
+    }
+
+    const label = this.domNode.parentElement?.querySelector('label')
+    if (label) {
+      const existingMarker = label.querySelector(`sup[${REQUIRED_MARKER_ATTR}]`)
+      if (isRequired && !existingMarker) {
         const sup = document.createElement('sup')
         sup.setAttribute('title', 'this field is required')
         sup.setAttribute(REQUIRED_MARKER_ATTR, '')
         sup.textContent = '*'
         label.insertBefore(sup, label.firstChild)
+      } else if (!isRequired) {
+        existingMarker?.remove()
       }
-      this.domNode.classList.add('required')
-      this.addValidation()
-    } else {
-      existingMarker?.remove()
-      this.domNode.classList.remove('required')
-      this.removeValidation()
     }
+
+    this.validate()
   }
 
   protected updateReadOnlyState() {
@@ -604,29 +606,30 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
     }
   }
 
-  protected addValidation() {
-    this.domNode.setAttribute('aria-required', 'true')
+  /** Apply the "invalid" visual + a11y state. */
+  protected markInvalid() {
     this.domNode.setAttribute('aria-invalid', 'true')
-    this.domNode.classList.add('is-invalid')
+    this.domNode.classList.add('is-invalid', 'error')
   }
 
-  protected removeValidation() {
-    this.domNode.removeAttribute('aria-required')
+  /** Clear the "invalid" visual + a11y state. */
+  protected markValid() {
     this.domNode.removeAttribute('aria-invalid')
-    this.domNode.classList.remove('is-invalid')
+    this.domNode.classList.remove('is-invalid', 'error')
   }
 
   protected validate(): boolean {
     const isRequired =
-      this.domNode.getAttribute('required') === 'true' || this.domNode.hasAttribute('required')
+      this.domNode.hasAttribute('required') || this.domNode.classList.contains('required')
+    const trimmed = this.domNode.value?.trim() ?? ''
+    const isValid = !isRequired || trimmed.length > 0
 
-    if (!isRequired || (this.domNode.value && this.domNode.value.trim().length > 0)) {
-      this.domNode.classList.remove('error')
-      return true
+    if (isValid) {
+      this.markValid()
+    } else {
+      this.markInvalid()
     }
-
-    this.domNode.classList.add('error')
-    return false
+    return isValid
   }
 
   destroy() {
