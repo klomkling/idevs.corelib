@@ -6,7 +6,13 @@ import {
   formatDate,
 } from '@serenity-is/corelib'
 import type { EditorProps } from '@serenity-is/corelib'
-import flatpickr from 'flatpickr'
+// Type-only import: this file references flatpickr exclusively in type
+// positions (flatpickr.Instance, flatpickr.Options.Options). A value-position
+// import would be elided by tsc under CommonJS output anyway, so making the
+// type-only intent explicit avoids the misleading appearance of a runtime
+// dependency from this subpath alone. The parent class (Serenity's
+// `DateEditor`) is what actually pulls flatpickr in at runtime.
+import type flatpickr from 'flatpickr'
 
 export type IdevsDateEditorOptions = DateEditorOptions & {
   format?: string

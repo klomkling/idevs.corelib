@@ -151,11 +151,12 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
   }
 
   protected handleDropdownMouseDown(e: MouseEvent) {
+    // Suppress the default mousedown behavior (blurring the input) so the
+    // subsequent click on the dropdown item can fire while the input still
+    // has focus. Selection itself happens in the per-item click handler —
+    // doing it here too would double-dispatch and overwrite cased values
+    // with the raw rendered textContent.
     e.preventDefault()
-    const target = e.target as HTMLElement | null
-    if (target?.classList.contains('dropdown-item')) {
-      this.selectItemFromEvent(e)
-    }
   }
 
   protected setupInputEventHandlers() {
@@ -167,9 +168,13 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
   }
 
   protected handleInputFocus() {
-    if (!this._readOnly) {
-      this.openDropdown()
-    }
+    if (this._readOnly) return
+    if (this._items.length === 0) return
+    // Reset the suppression flag and let filterDropdownItems decide visibility
+    // based on current input text — keeps the dropdown closed when nothing
+    // matches instead of opening an empty container.
+    this.valueAssigned = false
+    this.filterDropdownItems()
   }
 
   protected handleInputBlur() {
@@ -234,14 +239,6 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
       this.domNode.value = formattedValue
       this.domNode.setSelectionRange(cursorPos, cursorPos)
     }
-  }
-
-  protected selectItemFromEvent(e: MouseEvent) {
-    const target = e.target as HTMLElement | null
-    if (!target) return
-    const itemValue = target.textContent ?? ''
-    this.set_value(itemValue)
-    this.selectItem(itemValue)
   }
 
   protected refreshDropdownItems() {
@@ -362,6 +359,17 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
   }
 
   protected handleDropdownKeyDown(e: KeyboardEvent) {
+    // Only handle the keys we navigate with; let everything else (most
+    // importantly Tab) bubble so keyboard users aren't trapped in the
+    // dropdown when an item has focus.
+    if (
+      e.key !== 'ArrowDown' &&
+      e.key !== 'ArrowUp' &&
+      e.key !== 'Enter' &&
+      e.key !== 'Escape'
+    ) {
+      return
+    }
     e.preventDefault()
     e.stopPropagation()
 
