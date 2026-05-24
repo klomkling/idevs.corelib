@@ -10,11 +10,12 @@ const COMMON_SEPARATORS = /[\s._-]/g
  *   ('0' pads with '0', 'x' pads with a space).
  * - All other pattern characters are literal separators copied through.
  *
- * Early-return guard: if the pattern is composed entirely of '0' characters
- * (no separators, e.g. "0000") and the value contains any non-digit, the
- * original value is returned untouched. Numeric masks that contain separators
- * (e.g. "0000-00000-0") do NOT trigger this guard — this is the inherited
- * behavior from the original PowerACC implementation.
+ * Early-return guard: the input is first stripped of non-alphanumerics. If the
+ * pattern is composed entirely of '0' characters (no separators, e.g. "0000")
+ * and the stripped value still contains a letter, the original value is
+ * returned untouched. Numeric masks that contain separators (e.g.
+ * "0000-00000-0") do NOT trigger this guard — this is the inherited behavior
+ * from the original PowerACC implementation.
  */
 export function customerCodeFormatter(value: string, pattern: string): string {
   const cleanValue = value.replace(ALPHANUMERIC_STRIP, '')
@@ -42,7 +43,14 @@ export function customerCodeFormatter(value: string, pattern: string): string {
   return result
 }
 
-/** True when the pattern uses only digit placeholders and separators (no letter placeholders). */
+/**
+ * True when the pattern, after removing all '0' characters, contains only
+ * digits, whitespace, or the common separators (`. _ -`). In practice this
+ * means the pattern has no 'x' (letter) placeholders. Note: patterns
+ * consisting solely of separators (e.g. "-") or solely of literal digits
+ * (e.g. "123") also return true; the check is "no letter placeholders",
+ * not "has at least one '0' placeholder".
+ */
 export function isNumericTemplate(pattern: string): boolean {
   return NUMERIC_TEMPLATE_RESIDUE.test(pattern.replace(/0/g, ''))
 }
