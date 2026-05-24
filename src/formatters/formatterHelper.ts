@@ -12,10 +12,13 @@ const COMMON_SEPARATORS = /[\s._-]/g
  *
  * Early-return guard: the input is first stripped of non-alphanumerics. If the
  * pattern is composed entirely of '0' characters (no separators, e.g. "0000")
- * and the stripped value still contains a letter, the original value is
- * returned untouched. Numeric masks that contain separators (e.g.
- * "0000-00000-0") do NOT trigger this guard — this is the inherited behavior
- * from the original PowerACC implementation.
+ * AND the stripped value is not a pure digit string, the original value is
+ * returned untouched. That covers two cases:
+ *   - the stripped value contains a letter (e.g. "AB12")
+ *   - the stripped value is empty (raw input was empty or separators-only)
+ * Numeric masks that contain separators (e.g. "0000-00000-0") do NOT trigger
+ * this guard — this is the inherited behavior from the original PowerACC
+ * implementation.
  */
 export function customerCodeFormatter(value: string, pattern: string): string {
   const cleanValue = value.replace(ALPHANUMERIC_STRIP, '')
