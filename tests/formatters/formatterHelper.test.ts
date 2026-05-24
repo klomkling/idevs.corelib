@@ -29,6 +29,13 @@ describe('customerCodeFormatter', () => {
   it('strips existing separators before applying the pattern', () => {
     expect(customerCodeFormatter('12-34-56', '00-00-00')).toBe('12-34-56')
   })
+
+  // Inherited PowerACC behavior: the all-zeros early-return only triggers for
+  // separator-less masks, so a separator-containing numeric mask still
+  // reformats non-digit input rather than returning it untouched.
+  it('does NOT short-circuit for non-digit input on a separator-containing numeric mask', () => {
+    expect(customerCodeFormatter('AB12', '0000-00000-0')).toBe('AB12-00000-0')
+  })
 })
 
 describe('isNumericTemplate', () => {

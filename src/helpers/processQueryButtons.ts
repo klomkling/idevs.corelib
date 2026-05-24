@@ -1,8 +1,7 @@
 import type { ToolButton } from '@serenity-is/corelib'
 
 export type ProcessQueryOptions = {
-  field: string
-  onClick: (value: unknown) => void
+  onClick: (isQuery: boolean) => void
 }
 
 /**

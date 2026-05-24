@@ -5,12 +5,16 @@ const COMMON_SEPARATORS = /[\s._-]/g
 
 /**
  * Apply a pattern mask to a value.
- * - '0' placeholders accept digits; pad with '0' when value is shorter.
- * - 'x' placeholders accept any alphanumeric; pad with ' ' when value is shorter.
- * - All other characters are literal separators copied through.
+ * - '0' and 'x' placeholders both consume the next alphanumeric character from
+ *   the value; they differ only in their padding char when the value is shorter
+ *   ('0' pads with '0', 'x' pads with a space).
+ * - All other pattern characters are literal separators copied through.
  *
- * If the pattern is digit-only (e.g. "0000-00000-0") but the value contains
- * non-digits, the original value is returned untouched.
+ * Early-return guard: if the pattern is composed entirely of '0' characters
+ * (no separators, e.g. "0000") and the value contains any non-digit, the
+ * original value is returned untouched. Numeric masks that contain separators
+ * (e.g. "0000-00000-0") do NOT trigger this guard — this is the inherited
+ * behavior from the original PowerACC implementation.
  */
 export function customerCodeFormatter(value: string, pattern: string): string {
   const cleanValue = value.replace(ALPHANUMERIC_STRIP, '')
