@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-05-24
+
+### Added
+- **Csi/UI port — batch 1/4** (primitives from PowerACC):
+  - `helpers/windowHelper.ts` — `isSmallDevice()` responsive media-query check.
+  - `helpers/processQueryButtons.ts` — `addProcessQueryButtons()` factory for paired Query/Clear toolbar buttons.
+  - `types/gridEditableMode.ts` — `GridEditableMode` discriminated union (`Full` / `Off` / `Some`).
+  - `formatters/formatterHelper.ts` — `customerCodeFormatter`, `isNumericTemplate`, `isNumericInput` (filename fixes the original `Formater` typo).
+- 22 new unit tests covering the three modules above.
+
 ## [1.1.0] - 2026-05-23
 
 ### Added
