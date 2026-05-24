@@ -75,6 +75,11 @@
       "optional": true
     }
   },
+  "overrides": {
+    "@serenity-is/tsbuild": {
+      "glob": "11.1.0"
+    }
+  },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
     "@serenity-is/corelib": "^8.8.6",
