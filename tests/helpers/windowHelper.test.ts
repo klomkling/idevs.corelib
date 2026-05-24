@@ -18,10 +18,14 @@ const stubMatchMedia = (matches: boolean): MatchMediaFn => {
 }
 
 describe('isSmallDevice', () => {
-  const original = window.matchMedia
+  const originalDescriptor = Object.getOwnPropertyDescriptor(window, 'matchMedia')
 
   afterEach(() => {
-    Object.defineProperty(window, 'matchMedia', { value: original, configurable: true })
+    if (originalDescriptor) {
+      Object.defineProperty(window, 'matchMedia', originalDescriptor)
+    } else {
+      delete (window as { matchMedia?: unknown }).matchMedia
+    }
   })
 
   it('returns true when the small-device media query matches', () => {
