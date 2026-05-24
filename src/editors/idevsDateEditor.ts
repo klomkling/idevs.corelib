@@ -137,8 +137,12 @@ export class IdevsDateEditor<
         this.domNode.value = instance.input.value
       },
       disable: [
+        // In read-only mode, disable every date EXCEPT the currently selected
+        // one. Compare full yyyy-MM-dd against `get_value()` (which normalises
+        // user-format input back to ISO) so unrelated days in other months or
+        // years can no longer be selected just because they share a day number.
         (d: Date) =>
-          this.get_readOnly() && formatDate(d, 'd') !== formatDate(this.domNode?.value, 'd'),
+          this.get_readOnly() && formatDate(d, 'yyyy-MM-dd') !== this.get_value(),
       ],
     }
 

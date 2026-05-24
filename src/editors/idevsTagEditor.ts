@@ -216,6 +216,10 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
   }
 
   protected handleInputChange() {
+    // User is actively typing — re-enable filter-driven dropdown visibility.
+    // (`valueAssigned` is set by programmatic set_value() to suppress the
+    // hide-when-empty path during initial value population.)
+    this.valueAssigned = false
     this.applyInputCasing()
     this.filterDropdownItems()
   }
@@ -579,7 +583,12 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
       this.domNode.removeAttribute('aria-required')
     }
 
-    const label = this.domNode.parentElement?.querySelector('label')
+    // The input is nested inside `tag-suggest-wrapper`, so its immediate
+    // parent never contains the Serenity-rendered label. Look up the label
+    // through the wrapper's parent (the original form container) and fall
+    // back to the input's parent for callers that bypass the wrapper.
+    const labelContainer = this.wrapperElement?.parentElement ?? this.domNode.parentElement
+    const label = labelContainer?.querySelector('label')
     if (label) {
       const existingMarker = label.querySelector(`sup[${REQUIRED_MARKER_ATTR}]`)
       if (isRequired && !existingMarker) {
