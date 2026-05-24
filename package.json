@@ -58,6 +58,7 @@
   "peerDependencies": {
     "@serenity-is/corelib": ">=8.8.6 <9",
     "@serenity-is/sleekgrid": ">=1.9.6 <2",
+    "flatpickr": ">=4.6 <5",
     "jquery": ">=3.5",
     "jspdf": ">=3"
   },
@@ -67,6 +68,9 @@
     },
     "@serenity-is/sleekgrid": {
       "optional": false
+    },
+    "flatpickr": {
+      "optional": true
     },
     "jquery": {
       "optional": true
@@ -89,6 +93,7 @@
     "@vitest/coverage-v8": "^4.1.7",
     "eslint": "^9.33.0",
     "eslint-config-prettier": "^10.1.8",
+    "flatpickr": "^4.6.13",
     "jsdom": "^29.1.1",
     "prettier": "^3.6.2",
     "typescript": "^5.9.2",

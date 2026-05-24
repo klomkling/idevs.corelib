@@ -37,6 +37,8 @@ export default [
         HTMLSelectElement: 'readonly',
         HTMLTextAreaElement: 'readonly',
         HTMLSpanElement: 'readonly',
+        CSSStyleDeclaration: 'readonly',
+        MutationObserver: 'readonly',
         Event: 'readonly',
         KeyboardEvent: 'readonly',
         MouseEvent: 'readonly',
