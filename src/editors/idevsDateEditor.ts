@@ -145,7 +145,9 @@ export class IdevsDateEditor<
         this.syncValidationClasses()
       },
       onClose: (_sd, _ds, instance) => {
-        this.domNode.value = instance.input.value
+        if (this.domNode) {
+          this.domNode.value = instance.input.value
+        }
       },
       disable: [
         // In read-only mode, disable every date EXCEPT the currently selected
