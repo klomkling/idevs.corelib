@@ -272,6 +272,50 @@ describe('IdevsSelfSearchButtonEditor — clearSearchOnReopen', () => {
   })
 })
 
+describe('IdevsSelfSearchButtonEditor — enableButtonClickSearch', () => {
+  it('button click triggers search by default (enableButtonClickSearch undefined)', () => {
+    const { input } = mount()
+    const searchBtn = input.parentElement!.querySelector<HTMLButtonElement>('button.search-btn')!
+    serviceCallStub.mockImplementation(opts => opts.onSuccess?.({ Entities: [] }))
+    searchBtn.click()
+    expect(serviceCallStub).toHaveBeenCalledTimes(1)
+  })
+
+  it('button click triggers search when enableButtonClickSearch=true', () => {
+    const { input } = mount({ enableButtonClickSearch: true })
+    const searchBtn = input.parentElement!.querySelector<HTMLButtonElement>('button.search-btn')!
+    serviceCallStub.mockImplementation(opts => opts.onSuccess?.({ Entities: [] }))
+    searchBtn.click()
+    expect(serviceCallStub).toHaveBeenCalledTimes(1)
+  })
+
+  it('button click does NOT trigger search when enableButtonClickSearch=false', () => {
+    const { input } = mount({ enableButtonClickSearch: false })
+    const searchBtn = input.parentElement!.querySelector<HTMLButtonElement>('button.search-btn')!
+    searchBtn.click()
+    expect(serviceCallStub).not.toHaveBeenCalled()
+  })
+})
+
+describe('IdevsSelfSearchButtonEditor — aria-expanded reset on cancel', () => {
+  it('resets aria-expanded=false on the display input when the modal is dismissed', async () => {
+    const { input } = mount({ presentation: 'modal' })
+    const display = input.parentElement!.querySelector<HTMLInputElement>('input.editor')!
+    const searchBtn = input.parentElement!.querySelector<HTMLButtonElement>('button.search-btn')!
+
+    serviceCallStub.mockImplementation(opts => opts.onSuccess?.({ Entities: [] }))
+    searchBtn.click()
+    await vi.runAllTimersAsync()
+    expect(display.getAttribute('aria-expanded')).toBe('true')
+
+    // Dismiss via Escape on the search input.
+    const modalInput = document.querySelector<HTMLInputElement>('.idevs-search-modal-input')!
+    modalInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+
+    expect(display.getAttribute('aria-expanded')).toBe('false')
+  })
+})
+
 describe('IdevsSelfSearchButtonEditor — destroy', () => {
   it('destroy tears down the presentation controller', () => {
     const { editor } = mount({ presentation: 'modal' })

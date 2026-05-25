@@ -50,7 +50,6 @@ export type IdevsSelfSearchButtonEditorOptions = {
   resultColumns?: ResultColumn[] | string
   columnFormatters?: CustomFormatterMap
   maxResultsToShow?: number
-  enableResultPaging?: boolean
   builtInDialogTitle?: string
   showResultsCount?: boolean
   enableColumnSorting?: boolean
@@ -334,6 +333,10 @@ export class IdevsSelfSearchButtonEditor<
   protected handleSearchButtonClick(event: MouseEvent): void {
     event.preventDefault()
     if (this.isReadonly) return
+    // Default true; explicit false disables button-triggered search (e.g.,
+    // when consumers wire search via Enter key only, or use the button for
+    // a custom interaction).
+    if (this.props.enableButtonClickSearch === false) return
     this.performSearch()
   }
 
@@ -391,7 +394,14 @@ export class IdevsSelfSearchButtonEditor<
 
     const callbacks: SearchPresentationCallbacks = {
       onSelect: item => this.handleSelection(item),
-      onCancel: () => this.displayInput.focus(),
+      onCancel: () => {
+        // Reset combobox state and return focus. The dropdown controller
+        // resets aria-expanded on the anchor itself, but the modal
+        // controller doesn't touch displayInput — without this, the
+        // combobox role would stay aria-expanded='true' after a cancel.
+        this.displayInput.setAttribute('aria-expanded', 'false')
+        this.displayInput.focus()
+      },
       fetchResults: query => this.fetchResults(query),
     }
 

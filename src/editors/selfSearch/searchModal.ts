@@ -52,7 +52,14 @@ export class SearchModalController {
   private sortState: SortState = null
   private state: StateKind = 'idle'
   private invokerElement: HTMLElement | null = null
+  /** Controller-lifetime listeners. Drained only in destroy(). */
   private cleanups: Array<() => void> = []
+  /**
+   * Per-render listeners attached to table cells/rows/headers. Drained at
+   * the start of every renderResults() so the cleanup array doesn't grow
+   * unbounded as the user sorts, filters, or navigates rows.
+   */
+  private rowCleanups: Array<() => void> = []
   private debounceTimer?: ReturnType<typeof setTimeout>
   private isDestroyed = false
   private readonly id: string
@@ -92,6 +99,7 @@ export class SearchModalController {
     if (this.isDestroyed) return
     this.isDestroyed = true
     this.clearDebounceTimer()
+    this.drainRowCleanups()
     for (const cleanup of this.cleanups) {
       try {
         cleanup()
@@ -101,6 +109,17 @@ export class SearchModalController {
     }
     this.cleanups = []
     this.root.remove()
+  }
+
+  private drainRowCleanups(): void {
+    for (const cleanup of this.rowCleanups) {
+      try {
+        cleanup()
+      } catch {
+        /* teardown noise */
+      }
+    }
+    this.rowCleanups = []
   }
 
   // === DOM construction ===
@@ -325,6 +344,10 @@ export class SearchModalController {
   // === Table rendering ===
 
   private renderResults(): void {
+    // Detach per-render listeners from the PREVIOUS render before building
+    // a fresh table — without this, every sort / filter / focus change
+    // leaked cleanups into the unbounded array.
+    this.drainRowCleanups()
     this.resultsContainer.replaceChildren()
     const table = document.createElement('table')
     table.setAttribute('role', 'grid')
@@ -361,7 +384,7 @@ export class SearchModalController {
       if (this.options.enableSorting) {
         const onClick = () => this.toggleSort(col.field)
         th.addEventListener('click', onClick)
-        this.cleanups.push(() => th.removeEventListener('click', onClick))
+        this.rowCleanups.push(() => th.removeEventListener('click', onClick))
       }
 
       row.appendChild(th)
@@ -396,7 +419,7 @@ export class SearchModalController {
       tr.addEventListener('click', onClick)
       const onKey = (e: KeyboardEvent) => this.handleRowKeydown(e, index)
       tr.addEventListener('keydown', onKey)
-      this.cleanups.push(() => {
+      this.rowCleanups.push(() => {
         tr.removeEventListener('click', onClick)
         tr.removeEventListener('keydown', onKey)
       })

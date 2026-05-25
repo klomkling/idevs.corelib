@@ -12,7 +12,6 @@ import type { SearchPresentationCallbacks, SearchPresentationOptions } from './s
  */
 
 export type SearchDropdownOptions = SearchPresentationOptions & {
-  anchorPosition?: 'bottom' | 'top' | 'auto'
   maxHeight?: string
   minWidth?: string
 }
@@ -31,7 +30,14 @@ export class SearchDropdownController {
   private focusIndex = -1
   private sortState: SortState = null
   private state: StateKind = 'idle'
+  /** Controller-lifetime listeners. Drained only in destroy(). */
   private cleanups: Array<() => void> = []
+  /**
+   * Per-render listeners on table cells/rows/headers. Drained at the start
+   * of every renderResults() to prevent unbounded accumulation across
+   * search/sort/arrow-nav re-renders.
+   */
+  private rowCleanups: Array<() => void> = []
   private debounceTimer?: ReturnType<typeof setTimeout>
   private isDestroyed = false
   private isOpenFlag = false
@@ -50,7 +56,10 @@ export class SearchDropdownController {
   open(initialQuery = ''): void {
     if (this.isDestroyed) return
     this.isOpenFlag = true
-    this.panel.style.display = 'block'
+    // 'flex' (not 'block') so the panel's flexDirection:column + child
+    // flex:1 properties take effect — without this, the results area
+    // can't scroll within maxHeight and overflow:hidden clips content.
+    this.panel.style.display = 'flex'
     this.anchor.setAttribute('aria-expanded', 'true')
     this.searchInput.value = initialQuery
     this.runSearch(initialQuery)
@@ -73,6 +82,7 @@ export class SearchDropdownController {
     if (this.isDestroyed) return
     this.isDestroyed = true
     this.clearDebounceTimer()
+    this.drainRowCleanups()
     for (const cleanup of this.cleanups) {
       try {
         cleanup()
@@ -82,6 +92,17 @@ export class SearchDropdownController {
     }
     this.cleanups = []
     this.panel.remove()
+  }
+
+  private drainRowCleanups(): void {
+    for (const cleanup of this.rowCleanups) {
+      try {
+        cleanup()
+      } catch {
+        /* teardown noise */
+      }
+    }
+    this.rowCleanups = []
   }
 
   // === DOM construction ===
@@ -241,6 +262,9 @@ export class SearchDropdownController {
   // === Table rendering ===
 
   private renderResults(): void {
+    // Detach per-render listeners from the PREVIOUS render before rebuilding
+    // — without this, every sort / filter / focus change leaked cleanups.
+    this.drainRowCleanups()
     this.resultsContainer.replaceChildren()
     const table = document.createElement('table')
     table.setAttribute('role', 'grid')
@@ -275,7 +299,7 @@ export class SearchDropdownController {
       if (this.options.enableSorting) {
         const onClick = () => this.toggleSort(col.field)
         th.addEventListener('click', onClick)
-        this.cleanups.push(() => th.removeEventListener('click', onClick))
+        this.rowCleanups.push(() => th.removeEventListener('click', onClick))
       }
 
       row.appendChild(th)
@@ -310,7 +334,7 @@ export class SearchDropdownController {
       tr.addEventListener('click', onClick)
       const onKey = (e: KeyboardEvent) => this.handleRowKeydown(e, index)
       tr.addEventListener('keydown', onKey)
-      this.cleanups.push(() => {
+      this.rowCleanups.push(() => {
         tr.removeEventListener('click', onClick)
         tr.removeEventListener('keydown', onKey)
       })

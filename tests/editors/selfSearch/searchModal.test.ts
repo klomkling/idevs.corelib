@@ -267,6 +267,35 @@ describe('SearchModalController — sorting', () => {
   })
 })
 
+describe('SearchModalController — per-render listener cleanup', () => {
+  it('rowCleanups does not grow unbounded across re-renders', async () => {
+    const { controller, fetchResults } = mount({ enableSorting: true })
+    fetchResults.mockResolvedValue([
+      { id: '1', name: 'A' },
+      { id: '2', name: 'B' },
+      { id: '3', name: 'C' },
+    ])
+    controller.open()
+    await vi.runAllTimersAsync()
+
+    // Internal access — verify the per-render array is drained on each render.
+    const internal = controller as unknown as { rowCleanups: Array<() => void> }
+    const initialSize = internal.rowCleanups.length
+
+    // 3 rows + 2 headers (enableSorting) = 5 cleanups expected after first render.
+    expect(initialSize).toBeGreaterThan(0)
+
+    // Trigger 5 re-renders via sort toggles.
+    for (let i = 0; i < 5; i++) {
+      const header = document.querySelectorAll<HTMLTableCellElement>('thead th')[0]
+      header.click()
+    }
+
+    // Should remain bounded (one render's worth), not 6× larger.
+    expect(internal.rowCleanups.length).toBe(initialSize)
+  })
+})
+
 describe('SearchModalController — count display', () => {
   it('shows result count in status when showCount is true', async () => {
     const { controller, fetchResults } = mount({ showCount: true })

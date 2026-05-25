@@ -60,12 +60,13 @@ describe('SearchDropdownController — DOM + ARIA', () => {
 })
 
 describe('SearchDropdownController — open/close lifecycle', () => {
-  it('open() shows the panel and toggles aria-expanded=true on the anchor', () => {
+  it('open() shows the panel with display=flex and toggles aria-expanded=true on the anchor', () => {
     const { controller, anchor, fetchResults } = mount()
     fetchResults.mockResolvedValue([])
     controller.open()
     const panel = document.querySelector('.idevs-search-dropdown-panel') as HTMLElement
-    expect(panel.style.display).toBe('block')
+    // 'flex' so the panel's flexDirection:column + child flex:1 take effect.
+    expect(panel.style.display).toBe('flex')
     expect(anchor.getAttribute('aria-expanded')).toBe('true')
     expect(controller.isOpen()).toBe(true)
   })
@@ -180,6 +181,28 @@ describe('SearchDropdownController — search + selection', () => {
     controller.open()
     await vi.runAllTimersAsync()
     expect(document.querySelector('.idevs-search-dropdown-status')?.textContent).toBe('Search failed. Please try again.')
+  })
+})
+
+describe('SearchDropdownController — per-render listener cleanup', () => {
+  it('rowCleanups does not grow unbounded across re-renders', async () => {
+    const { controller, fetchResults } = mount({ enableSorting: true })
+    fetchResults.mockResolvedValue([
+      { id: '1', name: 'A' },
+      { id: '2', name: 'B' },
+    ])
+    controller.open()
+    await vi.runAllTimersAsync()
+
+    const internal = controller as unknown as { rowCleanups: Array<() => void> }
+    const initialSize = internal.rowCleanups.length
+    expect(initialSize).toBeGreaterThan(0)
+
+    for (let i = 0; i < 5; i++) {
+      const header = document.querySelectorAll<HTMLTableCellElement>('thead th')[0]
+      header.click()
+    }
+    expect(internal.rowCleanups.length).toBe(initialSize)
   })
 })
 
