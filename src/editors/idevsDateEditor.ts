@@ -47,8 +47,16 @@ export class IdevsDateEditor<
   }
 
   set_value(value: string) {
+    if (!this.domNode) {
+      super.set_value(value)
+      return
+    }
+
     const fp = this.getFlatpickr()
-    if (!fp) return
+    if (!fp) {
+      super.set_value(value)
+      return
+    }
     const oldValue = this.get_value()
 
     // Route through flatpickr's API so `selectedDates` stays in sync and the
