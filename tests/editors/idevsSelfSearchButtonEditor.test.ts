@@ -316,6 +316,24 @@ describe('IdevsSelfSearchButtonEditor — aria-expanded reset on cancel', () => 
   })
 })
 
+describe('IdevsSelfSearchButtonEditor — service error preservation', () => {
+  it('rejects fetchResults with an Error whose cause is the original service payload', async () => {
+    const { editor } = mount()
+    const serviceErrorPayload = { Code: 'AUTH_DENIED', Message: 'Unauthorized' }
+    serviceCallStub.mockImplementation(opts => opts.onError?.(serviceErrorPayload))
+
+    // fetchResults is protected; access via cast for the test.
+    const fetchResults = (editor as unknown as {
+      fetchResults: (query: string) => Promise<Record<string, unknown>[]>
+    }).fetchResults.bind(editor)
+
+    await expect(fetchResults('q')).rejects.toMatchObject({
+      message: expect.stringContaining('service call failed'),
+      cause: serviceErrorPayload,
+    })
+  })
+})
+
 describe('IdevsSelfSearchButtonEditor — destroy', () => {
   it('destroy tears down the presentation controller', () => {
     const { editor } = mount({ presentation: 'modal' })

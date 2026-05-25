@@ -36,6 +36,13 @@ describe('parseResultColumns', () => {
     expect(result[0].field).toBe('Id')
     expect(result[1].field).toBe('Name')
   })
+
+  it('parses an empty string spec into [] (not falling back to defaults)', () => {
+    // Regression: empty string is a valid string spec; the function must
+    // distinguish it from null/undefined "no spec provided".
+    const result = parseResultColumns('', {})
+    expect(result).toEqual([])
+  })
 })
 
 describe('parseColumnString', () => {

@@ -473,7 +473,20 @@ export class IdevsSelfSearchButtonEditor<
             const list = response as unknown as ServiceListResponse
             resolve(list.Entities ?? [])
           },
-          onError: () => reject(new Error('Service call failed')),
+          onError: (errorResponse: unknown) => {
+            // Preserve the Serenity error object as `cause` so callers and
+            // tests can inspect it. The wrapping Error keeps the call-site
+            // stack and gives a stable message; consumers wanting the raw
+            // service payload can read `(err as Error & { cause: unknown }).cause`.
+            // Note: assigning `.cause` post-construction (rather than via the
+            // ES2022 `new Error(msg, { cause })` form) for portability across
+            // TS lib targets.
+            const wrapper = new Error(
+              `IdevsSelfSearchButtonEditor service call failed: ${this.props.service}/${method}`,
+            ) as Error & { cause?: unknown }
+            wrapper.cause = errorResponse
+            reject(wrapper)
+          },
         })
       } catch (err) {
         reject(err)

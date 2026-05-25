@@ -112,7 +112,7 @@ export class SearchDropdownController {
     this.panel.id = this.id
     this.panel.className = 'idevs-search-dropdown-panel'
     Object.assign(this.panel.style, {
-      display: 'none', // toggled to 'block' on open()
+      display: 'none', // toggled to 'flex' on open() (matches flexDirection)
       position: 'absolute',
       zIndex: '1040',
       backgroundColor: '#fff',
@@ -120,7 +120,10 @@ export class SearchDropdownController {
       borderRadius: '4px',
       boxShadow: '0 6px 16px rgba(0,0,0,0.15)',
       maxHeight: this.options.maxHeight ?? '320px',
-      minWidth: this.options.minWidth ?? '400px',
+      // minWidth deliberately NOT set here — position() is the single source
+      // of truth (it computes width based on the anchor or honors
+      // options.minWidth). Setting a default here would be overwritten on
+      // every open() and never visible to the user.
       overflow: 'hidden',
       flexDirection: 'column',
     })

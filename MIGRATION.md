@@ -21,7 +21,7 @@
 
 - Decomposed from a single 3,404-LOC file into focused modules:
   - `src/editors/selfSearch/columnFormatters.ts` — pure parsing + built-in formatters.
-  - `src/editors/selfSearch/searchModal.ts` — modal controller with WAI-ARIA dialog semantics + focus trap behavior (focus returns to invoker on close).
+  - `src/editors/selfSearch/searchModal.ts` — modal controller with WAI-ARIA dialog semantics + focus restoration on close (focus returns to invoker). Note: not a full focus trap — Tab can still exit the dialog. Planned follow-up.
   - `src/editors/selfSearch/searchDropdown.ts` — combobox-style dropdown variant; click-outside dismisses; window resize re-positions.
 - XSS-safe required marker via `shared/requiredMarker`.
 - Single-chokepoint value writes via `set_value()`.

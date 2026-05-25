@@ -4,8 +4,15 @@ import type { ResultColumn } from './columnFormatters'
  * Built-in modal presentation for IdevsSelfSearchButtonEditor. Renders a
  * full-screen overlay with a results grid; supports keyboard navigation
  * (ArrowUp/Down/Enter/Escape), sort, filter, loading/error/empty states,
- * focus trap (ESC closes, focus returns to invoker), and WAI-ARIA dialog
- * semantics (role="dialog" + aria-modal + aria-labelledby).
+ * and WAI-ARIA dialog semantics (role="dialog" + aria-modal + aria-labelledby).
+ *
+ * Focus behavior: on open, focus moves to the search input; on close (via
+ * Escape, click-outside, or selection), focus returns to whatever element
+ * was active when open() was called. NOTE: this is focus RESTORATION, not
+ * a full focus trap — Tab/Shift+Tab are not intercepted, so keyboard users
+ * pressing Tab past the last focusable element can exit the dialog into the
+ * page underneath. A proper focus trap is a planned follow-up; until then,
+ * Escape provides a reliable dismiss path.
  *
  * The controller communicates with the parent editor via constructor-injected
  * callbacks — no direct back-reference. Owns its own DOM and listener

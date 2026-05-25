@@ -35,7 +35,10 @@ export function parseResultColumns(
   context: DefaultColumnsContext,
   customFormatters?: CustomFormatterMap,
 ): ResultColumn[] {
-  if (!spec) return getDefaultColumns(context)
+  // Use nullish (not falsy) check: an empty string is a valid string spec
+  // that should be parsed (and will return []) — distinct from "no spec
+  // provided" which falls back to defaults.
+  if (spec == null) return getDefaultColumns(context)
   if (Array.isArray(spec)) return spec
   if (typeof spec === 'string') return parseColumnString(spec, customFormatters)
   return getDefaultColumns(context)
