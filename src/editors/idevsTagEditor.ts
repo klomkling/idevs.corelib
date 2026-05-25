@@ -550,7 +550,12 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
 
   set_value(value: string): void {
     const oldValue = this.domNode.value
-    this.domNode.value = value || ''
+    // Single chokepoint for the valueCasing contract: applies to programmatic
+    // writes AND to selections from the dropdown (handleItemClick funnels
+    // through here). Mirrors the casing already applied to user typing in
+    // applyInputCasing() and to rendered dropdown labels in formatItemText().
+    const casing = this.options.valueCasing ?? 'none'
+    this.domNode.value = applyCasing(value || '', casing)
 
     if (oldValue !== this.domNode.value) {
       this.valueAssigned = true

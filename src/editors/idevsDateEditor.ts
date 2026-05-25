@@ -285,8 +285,20 @@ export class IdevsDateEditor<
           ? instance.parseDate(instance.input.value, 'Y-m-d')
           : instance.parseDate(instance.input.value, userFormat)
         if (parsedDate) {
-          const date = parsedDate.getDate()
-          const match = Array.from(days).find(d => d.textContent === date.toString())
+          // Match by flatpickr's `dateObj` property on each day cell rather
+          // than by day-of-month text — calendars include prev/next-month
+          // spillover cells that share day numbers, and matching on text
+          // alone could highlight the wrong cell (e.g. picking the previous
+          // month's "1st" instead of the current month's).
+          const match = Array.from(days).find(d => {
+            const dateObj = (d as HTMLElement & { dateObj?: Date }).dateObj
+            return (
+              !!dateObj &&
+              dateObj.getFullYear() === parsedDate.getFullYear() &&
+              dateObj.getMonth() === parsedDate.getMonth() &&
+              dateObj.getDate() === parsedDate.getDate()
+            )
+          })
           match?.classList.add('selected')
         }
       }
