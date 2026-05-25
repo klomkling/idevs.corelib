@@ -261,6 +261,9 @@ export class IdevsDateEditor<
   }
 
   private getFlatpickr(): flatpickr.Instance | undefined {
+    // Guard against teardown races: timers or stale callbacks (set_value,
+    // sync handlers) may invoke this after the editor's domNode is gone.
+    if (!this.domNode) return undefined
     return (this.domNode as FlatpickrAttachedElement)._flatpickr
   }
 

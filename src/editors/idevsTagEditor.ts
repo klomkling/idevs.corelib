@@ -52,6 +52,7 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
   private readonly dropdownId: string = `tag-dropdown-${Math.random().toString(36).substring(2, 10)}`
   private documentClickHandler!: (e: MouseEvent) => void
   private _navigatingDropdown = false
+  private optionIdCounter = 0
 
   declare readonly domNode: HTMLInputElement
 
@@ -68,6 +69,7 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
     this.createWrapperAndDropdown()
     this.setupEventHandlers()
     this.setInitialOptions()
+    this.applyComboboxAria()
     this.validate()
   }
 
@@ -93,11 +95,27 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
     this.dropdownContainer = Fluent('div')
       .attr('id', this.dropdownId)
       .attr('tabindex', '-1')
+      .attr('role', 'listbox')
       .addClass('tag-suggest-dropdown')
       .style(css => this.getDropdownStyles(css))
       .getNode() as HTMLDivElement
 
     this.wrapperElement.appendChild(this.dropdownContainer)
+  }
+
+  /**
+   * Wire up the WAI-ARIA 1.2 combobox-with-listbox pattern on the input. The
+   * dropdown element gets `role="listbox"`; individual items get
+   * `role="option"`. `aria-expanded` is toggled in open/hide; the currently
+   * focused item is tracked via `aria-activedescendant` so the input keeps
+   * focus while screen readers can still announce the active suggestion.
+   */
+  protected applyComboboxAria() {
+    this.domNode.setAttribute('role', 'combobox')
+    this.domNode.setAttribute('aria-autocomplete', 'list')
+    this.domNode.setAttribute('aria-controls', this.dropdownId)
+    this.domNode.setAttribute('aria-expanded', 'false')
+    this.domNode.setAttribute('aria-haspopup', 'listbox')
   }
 
   protected getDropdownStyles(css: CSSStyleDeclaration) {
@@ -251,6 +269,7 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
   }
 
   protected addDropdownItems() {
+    this.optionIdCounter = 0
     const casing = this.options.valueCasing ?? 'none'
     this._items.forEach(item => {
       const displayText = this.formatItemText(item, casing)
@@ -263,8 +282,12 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
   }
 
   protected createDropdownItem(text: string, item: TagItem) {
+    const optionId = `${this.dropdownId}-opt-${this.optionIdCounter++}`
     const itemEl = Fluent('div')
       .addClass('dropdown-item')
+      .attr('id', optionId)
+      .attr('role', 'option')
+      .attr('aria-selected', 'false')
       .attr('tabindex', '-1')
       .text(text)
       .style(css => {
@@ -415,10 +438,13 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
 
   protected openDropdown() {
     this.dropdownContainer.style.display = 'block'
+    this.domNode.setAttribute('aria-expanded', 'true')
   }
 
   protected hideDropdown() {
     this.dropdownContainer.style.display = 'none'
+    this.domNode.setAttribute('aria-expanded', 'false')
+    this.domNode.removeAttribute('aria-activedescendant')
   }
 
   protected isDropdownHidden(): boolean {
@@ -463,17 +489,23 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
   protected focusDropdownItem(item: HTMLElement) {
     this.clearDropdownFocus()
     item.classList.add('dropdown-item-focused')
+    item.setAttribute('aria-selected', 'true')
     this.highlightItem(item)
     item.focus()
     item.scrollIntoView({ block: 'nearest' })
+    if (item.id) {
+      this.domNode.setAttribute('aria-activedescendant', item.id)
+    }
   }
 
   protected clearDropdownFocus() {
     const focused = this.getFocusedDropdownItem()
     if (focused) {
       focused.classList.remove('dropdown-item-focused')
+      focused.setAttribute('aria-selected', 'false')
       this.unhighlightItem(focused)
     }
+    this.domNode.removeAttribute('aria-activedescendant')
   }
 
   protected highlightItem(item: HTMLElement) {
