@@ -116,8 +116,8 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
    * Wire up the WAI-ARIA 1.2 combobox-with-listbox pattern on the input. The
    * dropdown element gets `role="listbox"`; individual items get
    * `role="option"`. `aria-expanded` is toggled in open/hide; the currently
-   * focused item is tracked via `aria-activedescendant` so the input keeps
-   * focus while screen readers can still announce the active suggestion.
+   * focused item is tracked via `aria-activedescendant` while keyboard
+   * navigation moves DOM focus onto listbox options for direct interaction.
    */
   protected applyComboboxAria() {
     this.domNode.setAttribute('role', 'combobox')
@@ -167,8 +167,10 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
       target &&
       this.domNode &&
       this.dropdownContainer &&
+      this.wrapperElement &&
       !this.domNode.contains(target) &&
-      !this.dropdownContainer.contains(target)
+      !this.dropdownContainer.contains(target) &&
+      !this.wrapperElement.contains(target)
     )
   }
 

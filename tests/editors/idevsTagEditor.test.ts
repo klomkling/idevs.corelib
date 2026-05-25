@@ -5,7 +5,10 @@ import {
   IdevsTagEditor,
 } from '../../src/editors/idevsTagEditor'
 
+const mountedEditors: IdevsTagEditor[] = []
+
 afterEach(() => {
+  mountedEditors.splice(0).forEach(editor => editor.destroy())
   document.body.replaceChildren()
 })
 
@@ -20,6 +23,7 @@ function mountEditor(
   input.type = 'text'
   document.body.appendChild(input)
   const editor = new IdevsTagEditor({ element: input, ...options })
+  mountedEditors.push(editor)
   const wrapper = input.parentElement as HTMLDivElement
   return { editor, input, wrapper }
 }
@@ -252,6 +256,7 @@ describe('IdevsTagEditor — required state & validation', () => {
     input.setAttribute('required', '')
     document.body.appendChild(input)
     const editor = new IdevsTagEditor({ element: input })
+    mountedEditors.push(editor)
     expect(editor.get_required()).toBe(true)
   })
 })
