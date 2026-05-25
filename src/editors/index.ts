@@ -1,6 +1,10 @@
 export * from './checkboxButtonEditor'
 export * from './dateMonthEditor'
 export * from './idevsTagEditor'
+export * from './idevsSearchButtonEditor'
+export * from './idevsNumericTagEditor'
+export * from './slickEditorBase'
+export * from './slickSearchButtonEditor'
 
 // IdevsDateEditor is intentionally NOT re-exported from this barrel.
 // It depends on `flatpickr` (an OPTIONAL peer dependency). Re-exporting
@@ -10,3 +14,7 @@ export * from './idevsTagEditor'
 //   import { IdevsDateEditor } from '@idevs/corelib/editors/idevsDateEditor'
 //
 // Consumers using this subpath are responsible for installing flatpickr.
+
+// Internal helpers under shared/ are NOT exported publicly. They exist for
+// use by other editors in this package (and PR-3b's SelfSearch). Consumers
+// should depend on the editor classes, not these utilities.
