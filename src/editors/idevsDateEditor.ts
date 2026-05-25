@@ -231,54 +231,73 @@ export class IdevsDateEditor<
     fp.altInput?.classList.toggle('idevs-readonly-altinput', readOnly)
   }
 
+  private keyboardHandlerTarget?: HTMLInputElement
+  private keyboardHandler?: (event: KeyboardEvent) => void
+
+  protected detachKeyboardHandlers(): void {
+    if (this.keyboardHandlerTarget && this.keyboardHandler) {
+      this.keyboardHandlerTarget.removeEventListener('keydown', this.keyboardHandler, true)
+    }
+
+    this.keyboardHandlerTarget = undefined
+    this.keyboardHandler = undefined
+  }
+
+  public override destroy(): void {
+    this.detachKeyboardHandlers()
+    super.destroy()
+  }
+
   protected attachKeyboardHandlers(fp: flatpickr.Instance): void {
+    this.detachKeyboardHandlers()
+
     const target = (fp.altInput ?? fp.input) as HTMLInputElement
-    target.addEventListener(
-      'keydown',
-      (event: KeyboardEvent) => {
-        switch (event.key) {
-          case 'ArrowUp':
-          case 'ArrowDown':
+    const handler = (event: KeyboardEvent) => {
+      switch (event.key) {
+        case 'ArrowUp':
+        case 'ArrowDown':
+          event.preventDefault()
+          event.stopPropagation()
+          if (!fp.isOpen) fp.open()
+          if (fp.isOpen) {
+            setTimeout(() => {
+              const el = fp.calendarContainer.querySelector<HTMLElement>(
+                '.flatpickr-day.selected, .flatpickr-day.today, .flatpickr-day:not(.flatpickr-disabled)',
+              )
+              if (el) {
+                el.focus()
+                el.dispatchEvent(new KeyboardEvent('keydown', { key: event.key, bubbles: true }))
+              }
+            }, 50)
+          }
+          break
+        case 'Escape':
+          if (fp.isOpen) {
             event.preventDefault()
             event.stopPropagation()
-            if (!fp.isOpen) fp.open()
-            if (fp.isOpen) {
-              setTimeout(() => {
-                const el = fp.calendarContainer.querySelector<HTMLElement>(
-                  '.flatpickr-day.selected, .flatpickr-day.today, .flatpickr-day:not(.flatpickr-disabled)',
-                )
-                if (el) {
-                  el.focus()
-                  el.dispatchEvent(new KeyboardEvent('keydown', { key: event.key, bubbles: true }))
-                }
-              }, 50)
-            }
-            break
-          case 'Escape':
-            if (fp.isOpen) {
-              event.preventDefault()
-              event.stopPropagation()
-              fp.close()
-              setTimeout(() => target.focus(), 50)
-            }
-            break
-          case 'Enter':
-            if (fp.isOpen) {
-              event.preventDefault()
-              event.stopPropagation()
-              // fp.close() triggers the onClose callback, which syncs
-              // domNode.value to fp.input.value (the ISO `Y-m-d` value).
-              // Don't reassign from target.value here — target is altInput
-              // (user-format), and overwriting would replace the canonical
-              // ISO with the display string.
-              fp.close()
-              Fluent.trigger(this.domNode, 'change')
-            }
-            break
-        }
-      },
-      true,
-    )
+            fp.close()
+            setTimeout(() => target.focus(), 50)
+          }
+          break
+        case 'Enter':
+          if (fp.isOpen) {
+            event.preventDefault()
+            event.stopPropagation()
+            // fp.close() triggers the onClose callback, which syncs
+            // domNode.value to fp.input.value (the ISO `Y-m-d` value).
+            // Don't reassign from target.value here — target is altInput
+            // (user-format), and overwriting would replace the canonical
+            // ISO with the display string.
+            fp.close()
+            Fluent.trigger(this.domNode, 'change')
+          }
+          break
+      }
+    }
+
+    this.keyboardHandlerTarget = target
+    this.keyboardHandler = handler
+    target.addEventListener('keydown', handler, true)
   }
 
   private getFlatpickr(): flatpickr.Instance | undefined {
