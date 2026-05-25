@@ -1,5 +1,42 @@
 # Migration Guide
 
+## 1.2.x → 1.3.0 — batch 3b self-search button editor
+
+### New editors
+
+- `IdevsSelfSearchButtonEditor` (decorator: `Idevs.CoreLib.IdevsSelfSearchButtonEditor`) — self-hosted search-button editor that fetches results via Serenity's `serviceCall` and renders them in an in-editor modal or dropdown. No separately-registered Serenity search dialog required. Replaces PowerACC's `SelfSearchButtonEditor`.
+- `SlickSelfSearchButtonEditor` — SleekGrid column adapter wrapping `IdevsSelfSearchButtonEditor`. Replaces PowerACC's `SlickSelfSearchButtonEditor`.
+
+### New options
+
+- `presentation: 'modal' | 'dropdown'` (default: `'modal'`) — selects the in-editor result UI. The PowerACC source had two parallel code paths for these; in this port they're separate controllers (`SearchModalController` + `SearchDropdownController`) selected at construction time. Switching mid-life is NOT supported.
+
+### Breaking API renames (same as 1.2.0 for SearchButtonEditor)
+
+- `editor.filterKeys = {...}` → `editor.setFilterKeys({...})`
+- `editor.CriteriaKeys = [...]` → `editor.setCriteriaKeys([...])`
+- `editor.setFilterValue(key, value)` is kept from the source unchanged.
+
+### Hardening deltas vs PowerACC source
+
+- Decomposed from a single 3,404-LOC file into focused modules:
+  - `src/editors/selfSearch/columnFormatters.ts` — pure parsing + built-in formatters.
+  - `src/editors/selfSearch/searchModal.ts` — modal controller with WAI-ARIA dialog semantics + focus trap behavior (focus returns to invoker on close).
+  - `src/editors/selfSearch/searchDropdown.ts` — combobox-style dropdown variant; click-outside dismisses; window resize re-positions.
+- XSS-safe required marker via `shared/requiredMarker`.
+- Single-chokepoint value writes via `set_value()`.
+- WAI-ARIA combobox on the display input; `aria-haspopup` adapts to `dialog` or `listbox` based on `presentation`.
+- Both presentation controllers expose `destroy()` that removes ALL listeners + DOM and are idempotent.
+
+### Internal modules
+
+- `src/editors/selfSearch/{columnFormatters,searchModal,searchDropdown,index}.ts` are internal modules. They are NOT re-exported from the public `editors` barrel and may change without a major version bump.
+
+### Known limitations
+
+- Result rows are not virtualized. Source caps via `maxResultsToShow`; large result sets render all rows to DOM (mirrors source behavior).
+- The modal and dropdown controllers intentionally retain ~40% duplicated table/keyboard/sort logic. A follow-up extraction (`selfSearch/resultsTable.ts`) is tracked separately to avoid premature consolidation.
+
 ## 1.1.x → 1.2.0 — batch 3a search-button editor foundation
 
 ### New editors
