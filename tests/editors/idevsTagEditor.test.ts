@@ -225,6 +225,7 @@ describe('IdevsTagEditor — required state & validation', () => {
     container.appendChild(input)
 
     const editor = new IdevsTagEditor({ element: input })
+    mountedEditors.push(editor)
     editor.set_required(true)
 
     const marker = label.querySelector('sup[data-idevs-required-marker]')
