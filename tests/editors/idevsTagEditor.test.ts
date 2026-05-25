@@ -267,6 +267,7 @@ describe('IdevsTagEditor — destroy cleanup', () => {
     const removeSpy = vi.spyOn(document, 'removeEventListener')
     const { editor } = mountEditor()
     editor.destroy()
+    mountedEditors.splice(mountedEditors.indexOf(editor), 1)
 
     const callsForClick = removeSpy.mock.calls.filter(([type]) => type === 'click')
     expect(callsForClick.length).toBeGreaterThanOrEqual(1)
