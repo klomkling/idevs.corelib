@@ -1,5 +1,61 @@
 # Migration Guide
 
+## 1.1.x → 1.2.0 — batch 3a search-button editor foundation
+
+### New editors
+
+- `IdevsSearchButtonEditor` (decorator: `Idevs.CoreLib.IdevsSearchButtonEditor`) — hidden input + display input + search/clear buttons + Serenity dialog integration. Replaces PowerACC's `SearchButtonEditor`.
+- `IdevsNumericTagEditor` (decorator: `Idevs.CoreLib.IdevsNumericTagEditor`) — extends `IdevsTagEditor` with prefix/suffix/specialValues formatting. Replaces PowerACC's `NumericTagEditor`.
+- `SlickEditorBase` (no decorator — SleekGrid column-editor base, not a Serenity widget) — abstract base for SleekGrid column editors wrapping a Serenity widget. Replaces PowerACC's `SlickEditorBase`.
+- `SlickSearchButtonEditor` — SleekGrid column adapter wrapping `IdevsSearchButtonEditor`. Replaces PowerACC's `SlickSearchButtonEditor`.
+
+### Breaking API renames
+
+- `IdevsSearchButtonEditor` ports the PowerACC API but renames two PascalCase setters to camelCase methods:
+  - `editor.filterKeys = {...}` (asymmetric setter) → `editor.setFilterKeys({...})`
+  - `editor.CriteriaKeys = [...]` (PascalCase asymmetric setter) → `editor.setCriteriaKeys([...])`
+- Consumers using `editorParams` to configure these are unaffected.
+- `SlickEditorBase`'s `TEditor` generic is now constrained by `SlickWrappedEditor` (must expose `domNode: HTMLElement`; `value?`, `destroy?`, `props?` are optional). Subclasses wrapping editors that lack those shapes need to declare them.
+- `SlickEditorBase.validate()` now returns `{ valid: boolean; msg?: string }` (matching SleekGrid's `ValidationResult`) instead of `{ valid: boolean; msg: string | null }`. The optional-property form is compatible with the source semantics but TypeScript callers comparing `msg === null` need to compare `msg === undefined`.
+
+### Hardening deltas vs PowerACC source
+
+- XSS-safe required marker via `document.createElement('sup')` + `textContent` (no raw HTML-property writes on labels — same fix pattern as the 1.1.0 `DropdownToolButton` audit).
+- WAI-ARIA combobox role on the display input (`role="combobox"`, `aria-autocomplete="list"`, `aria-haspopup="dialog"`, `aria-expanded`, `aria-required`).
+- Single-chokepoint value writes — every `domNode.value` mutation routes through `set_value()`.
+- `destroy()` stops the `MutationObserver`, clears subscribers, and is idempotent.
+- Plain `type` for options (no `EditorProps<any>` extension); `unknown` instead of `any` throughout.
+
+### Internal helpers (not part of the public API)
+
+- `src/editors/shared/maskedPattern.ts`, `src/editors/shared/requiredMarker.ts`, `src/editors/shared/validationObserver.ts` are internal modules for editor authoring. They are NOT re-exported from the public `editors` barrel and are subject to change without a major version bump.
+
+### Recommended migration
+
+Replace direct PowerACC imports:
+
+```ts
+// before
+import { SearchButtonEditor } from 'PowerACC/Modules/Csi'
+
+// after
+import { IdevsSearchButtonEditor } from '@idevs/corelib/editors'
+```
+
+For consumers that previously did:
+
+```ts
+editor.filterKeys = { region: 'EU' }
+editor.CriteriaKeys = ['active']
+```
+
+migrate to:
+
+```ts
+editor.setFilterKeys({ region: 'EU' })
+editor.setCriteriaKeys(['active'])
+```
+
 ## 1.0.x → 1.1.0
 
 **No runtime breaking changes.** All changes from 1.0.5 preserve the runtime

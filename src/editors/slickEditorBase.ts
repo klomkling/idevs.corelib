@@ -9,7 +9,9 @@ export type SlickWrappedEditor = {
   domNode: HTMLElement
   value?: unknown
   destroy?: () => void
-  props?: { grid?: { slickGrid: unknown } }
+  // `props` is intentionally loose: subclasses may wrap editors that store
+  // their grid reference under different shapes (or not at all).
+  props?: { grid?: unknown }
 }
 
 type SlickGridLike = {
