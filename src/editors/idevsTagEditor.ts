@@ -18,15 +18,23 @@ export type IdevsTagEditorOptions = {
 
 const REQUIRED_MARKER_ATTR = 'data-idevs-required-marker'
 
-function tagItemToText(item: TagItem): string {
+/**
+ * @internal Exported for unit tests; not part of the public API
+ * (`stripInternal: true` in src/tsconfig.json removes this from emitted .d.ts).
+ */
+export function __tagItemToText(item: TagItem): string {
   if (typeof item === 'object' && item !== null) {
     if (item.text) return item.text
     return item.toString()
   }
   return String(item)
 }
+const tagItemToText = __tagItemToText
 
-function applyCasing(value: string, casing: TagValueCasing): string {
+/**
+ * @internal Exported for unit tests; not part of the public API.
+ */
+export function __applyCasing(value: string, casing: TagValueCasing): string {
   switch (casing) {
     case 'upper':
       return value.toUpperCase()
@@ -36,6 +44,7 @@ function applyCasing(value: string, casing: TagValueCasing): string {
       return value
   }
 }
+const applyCasing = __applyCasing
 
 @Decorators.registerEditor('Idevs.CoreLib.IdevsTagEditor')
 export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOptions>
