@@ -533,7 +533,11 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
     })
 
     if (!this.valueAssigned) {
-      this.dropdownContainer.style.display = hasVisibleItems ? 'block' : 'none'
+      if (hasVisibleItems) {
+        this.openDropdown()
+      } else {
+        this.hideDropdown()
+      }
     }
   }
 
