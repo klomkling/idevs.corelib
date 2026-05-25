@@ -87,6 +87,12 @@ export class IdevsSearchButtonEditor<
     this.renderUI()
     this.setupEventListeners()
     this.startValidationObserver()
+    // Honor onPreSearch from props/editorParams (in addition to the
+    // imperative preSearch() method) so consumers configuring via Slick
+    // editorParams don't need a post-construction wiring step.
+    if (this.props.onPreSearch) {
+      this.preSearchCallback = this.props.onPreSearch
+    }
   }
 
   // === Serenity contract ===
@@ -283,6 +289,18 @@ export class IdevsSearchButtonEditor<
     if (this.clearButton) {
       this.clearButton.addEventListener('click', e => this.handleClearButtonClick(e))
     }
+    // Register the dataSelected handler ONCE, not per dialog open. Multiple
+    // openDialog() calls would otherwise accumulate handlers and fire
+    // handleSelection N times per selection. The listener is harmless when no
+    // dialog is open (dataSelected events only originate from dialogs we
+    // instantiated). Registering here also ensures it fires BEFORE any Slick
+    // wrapper's listener (which is attached after this constructor returns)
+    // so the inner editor's set_value runs before the grid's commit.
+    this.domNode.addEventListener('dataSelected', e => {
+      const detail = (e as CustomEvent).detail
+      if (!detail) return
+      this.handleSelection(detail)
+    })
   }
 
   protected handleDisplayInputKeydown(event: KeyboardEvent): void {
@@ -431,13 +449,8 @@ export class IdevsSearchButtonEditor<
     dialog.DialogPermission = this.props.modifyDialogPermission
     if (preItems !== undefined) dialog.preItems = preItems
 
-    const selectionHandler = (event: Event) => {
-      const detail = (event as CustomEvent).detail
-      if (!detail) return
-      this.handleSelection(detail)
-    }
-    this.domNode.addEventListener('dataSelected', selectionHandler as EventListener)
-
+    // Selection is handled by the dataSelected listener registered once in
+    // setupEventListeners — no per-dialog attachment needed.
     dialog.dialogOpen()
   }
 

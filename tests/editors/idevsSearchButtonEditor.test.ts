@@ -401,6 +401,47 @@ describe('IdevsSearchButtonEditor — selection + subscribers', () => {
   })
 })
 
+describe('IdevsSearchButtonEditor — onPreSearch from options', () => {
+  it('wires options.onPreSearch as the preSearchCallback (no preSearch() call needed)', async () => {
+    const callback = vi.fn(() => Promise.resolve([{ id: '9', name: 'FromOpts' }]))
+    const { editor, input } = mount({
+      idColumnName: 'id',
+      textColumnName: 'name',
+      onPreSearch: callback,
+    })
+    const searchBtn = input.parentElement!.querySelector<HTMLButtonElement>('button.search-btn')!
+    const display = input.parentElement!.querySelector<HTMLInputElement>('input.editor')!
+    display.value = 'foo'
+    searchBtn.click()
+    expect(callback).toHaveBeenCalledTimes(1)
+
+    vi.useRealTimers()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    vi.useFakeTimers()
+
+    // Single-result auto-select still fires (proves the wiring worked end-to-end)
+    expect(editor.get_value()).toBe('9')
+  })
+})
+
+describe('IdevsSearchButtonEditor — dataSelected listener (no leak)', () => {
+  it('handleSelection fires exactly once per selection even after multiple openDialog calls', () => {
+    const onDataSelected = vi.fn()
+    const { input } = mount({ idColumnName: 'id', onDataSelected })
+    const searchBtn = input.parentElement!.querySelector<HTMLButtonElement>('button.search-btn')!
+
+    // Open the dialog three times — previously this leaked one listener per call.
+    searchBtn.click()
+    searchBtn.click()
+    searchBtn.click()
+
+    // Now fire dataSelected ONCE. The leak would cause N invocations.
+    input.dispatchEvent(new CustomEvent('dataSelected', { detail: { id: '42' } }))
+
+    expect(onDataSelected).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('IdevsSearchButtonEditor — destroy', () => {
   it('destroy is idempotent', () => {
     const { editor } = mount()

@@ -64,19 +64,17 @@ export class SlickSearchButtonEditor<P extends EditorOptions = EditorOptions>
     super.handleValueChange()
   }
 
-  private setupDataSelectionHandler(props: EditorProps<P>): void {
-    const opts = ((props.column as { sourceItem?: { editorParams?: unknown } } | undefined)?.sourceItem?.editorParams ??
-      {}) as IdevsSearchButtonEditorOptions
-
+  private setupDataSelectionHandler(_props: EditorProps<P>): void {
+    // The inner IdevsSearchButtonEditor already listens for `dataSelected` on
+    // its own domNode and handles set_value + onDataSelected + subscribers
+    // (single-chokepoint discipline). Because the inner listener was attached
+    // first (during the inner editor's constructor, before this wrapper's
+    // appendToContainer runs), it fires BEFORE this wrapper's listener — so
+    // by the time we commit, the canonical value is already set. This wrapper
+    // is only responsible for grid-side behavior: commit + navigate.
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<DataSelectedDetail>).detail
       if (!detail) return
-
-      const idCol = opts.idColumnName
-      if (idCol && idCol in detail) {
-        this.editor.set_value(String(detail[idCol]))
-      }
-      opts.onDataSelected?.(detail)
 
       const slickGrid = this.grid as SlickNavGrid | null
       if (!slickGrid) return

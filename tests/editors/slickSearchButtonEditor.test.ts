@@ -92,7 +92,10 @@ describe('SlickSearchButtonEditor', () => {
     expect(grid.slickGrid.getEditorLock).not.toHaveBeenCalled()
   })
 
-  it('invokes onDataSelected callback when configured', () => {
+  it('invokes onDataSelected callback exactly once (via inner editor, not double-fired by wrapper)', () => {
+    // Regression: previously both the inner editor and the Slick wrapper
+    // attached dataSelected listeners that called onDataSelected, causing
+    // double-invocation. The wrapper now only handles commit + navigate.
     const onDataSelected = vi.fn()
     const grid = createEntityGridStub({ items: [{ foo: 'bar' }] })
     const container = document.createElement('div')
