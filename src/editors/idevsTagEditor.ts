@@ -206,16 +206,23 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
     this.filterDropdownItems()
   }
 
-  protected handleInputBlur() {
+  protected handleInputBlur(e: FocusEvent) {
     if (this._navigatingDropdown) {
       this._navigatingDropdown = false
       return
     }
 
-    setTimeout(() => {
-      this.validate()
-      this.hideDropdown()
-    }, 100)
+    // If focus moved to something inside our wrapper (a dropdown item, a
+    // sibling control), the user is still interacting with us — keep the
+    // dropdown open. Using relatedTarget avoids the arbitrary 100ms defer
+    // that previously raced with item-click handlers.
+    const relatedTarget = e.relatedTarget as Node | null
+    if (relatedTarget && this.wrapperElement?.contains(relatedTarget)) {
+      return
+    }
+
+    this.validate()
+    this.hideDropdown()
   }
 
   protected handleInputKeyDown(e: KeyboardEvent) {
@@ -472,9 +479,14 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
   }
 
   protected getVisibleDropdownItems(): HTMLElement[] {
+    // Filter by computed inline style rather than a CSS substring selector.
+    // The substring form (`[style*="display: none"]`) is brittle: it only
+    // matches the exact "display: none" spelling and won't catch class-based
+    // hiding. Direct `style.display` access is exact and survives refactors
+    // of how filterDropdownItems hides items.
     return Array.from(
-      this.dropdownContainer.querySelectorAll('.dropdown-item:not([style*="display: none"])'),
-    ) as HTMLElement[]
+      this.dropdownContainer.querySelectorAll<HTMLElement>('.dropdown-item'),
+    ).filter(el => el.style.display !== 'none')
   }
 
   protected getFocusedDropdownItem(): HTMLElement | null {

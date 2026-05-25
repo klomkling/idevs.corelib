@@ -159,4 +159,36 @@ describe('IdevsDateEditor smoke tests', () => {
     await waitForMutation()
     expect(fp.altInput?.classList.contains('error')).toBe(false)
   })
+
+  it('destroy() disconnects the class observer and detaches keyboard handlers', async () => {
+    // Regression guard: an earlier autofix introduced a second `destroy()`
+    // override that only detached keyboard handlers, leaving the original
+    // one in place — TS2393 (Duplicate function implementation) broke CI
+    // typecheck. The merged destroy() must perform ALL cleanup:
+    //   1. disconnect the MutationObserver
+    //   2. detach the keyboard handler attached in attachKeyboardHandlers
+    //   3. remove the Fluent validationerror listener
+    //   4. delegate to super.destroy()
+    const { editor, input, fp } = mountEditor()
+    const altInput = fp.altInput
+    expect(altInput).toBeDefined()
+
+    editor.destroy()
+    // Avoid the afterEach double-destroy.
+    const idx = mountedEditors.indexOf(editor)
+    if (idx >= 0) mountedEditors.splice(idx, 1)
+
+    // (1) Class observer disconnected: post-destroy class mutations on the
+    // original input must NOT propagate to the altInput.
+    altInput!.classList.remove('error', 'invalid', 'validation-error')
+    input.classList.add('error')
+    await waitForMutation()
+    expect(altInput!.classList.contains('error')).toBe(false)
+
+    // (2) Keyboard handler detached: dispatching ArrowDown on the target
+    // must NOT trigger the handler that calls fp.open().
+    fp.isOpen = false
+    altInput!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+    expect(fp.isOpen).toBe(false)
+  })
 })
