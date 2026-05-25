@@ -136,4 +136,42 @@ describe('SlickSearchButtonEditor', () => {
     vi.advanceTimersByTime(1)
     expect(() => editor.destroy()).not.toThrow()
   })
+
+  it('handleValueChange does NOT overwrite the canonical raw value with the formatted display text (masked pattern)', () => {
+    // Regression: previously the wrapper called this.editor.set_value
+    // (displayInput.value) which wrote the FORMATTED text back into the
+    // hidden domNode, corrupting the raw value the inner editor's input
+    // handler had just extracted via the masked pattern.
+    const grid = createEntityGridStub({ items: [{ foo: 'bar' }] })
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const props = {
+      container,
+      column: {
+        field: 'foo',
+        sourceItem: {
+          editorParams: {
+            searchDialogType: 'SearchDialogStub',
+            idColumnName: 'id',
+            maskedPattern: '0000-0000',
+          },
+        },
+      },
+      grid: grid.slickGrid,
+    } as unknown as EditorProps<EditorOptions>
+    const editor = new SlickSearchButtonEditor(props)
+    mounted.push(editor)
+    vi.advanceTimersByTime(1)
+
+    const inner = getInner(editor)
+    const displayInput = inner.domNode.parentElement!.querySelector<HTMLInputElement>(
+      'input.editor',
+    )!
+
+    displayInput.value = '12345678'
+    displayInput.dispatchEvent(new Event('input'))
+
+    expect(displayInput.value).toBe('1234-5678')
+    expect(inner.domNode.value).toBe('12345678')
+  })
 })

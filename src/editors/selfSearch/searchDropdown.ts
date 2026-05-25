@@ -215,8 +215,8 @@ export class SearchDropdownController {
       case 'ArrowDown':
         event.preventDefault()
         if (this.filteredItems.length > 0) {
-          this.focusIndex = 0
-          this.renderResults()
+          // focusRow already calls renderResults internally — drop the
+          // redundant inline render that doubled the table rebuild cost.
           this.focusRow(0)
         }
         break
@@ -355,10 +355,15 @@ export class SearchDropdownController {
         break
       case 'ArrowUp':
         event.preventDefault()
-        if (index > 0) this.focusRow(index - 1)
-        else {
-          this.searchInput.focus()
+        if (index > 0) {
+          this.focusRow(index - 1)
+        } else {
+          // Returning to search input from row 0. Reset focus state AND
+          // re-render to clear the .idevs-row-focused highlight (otherwise
+          // the row stays visually selected even though focus has moved).
           this.focusIndex = -1
+          this.renderResults()
+          this.searchInput.focus()
         }
         break
       case 'Enter':

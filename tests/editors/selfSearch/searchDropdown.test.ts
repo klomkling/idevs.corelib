@@ -184,6 +184,26 @@ describe('SearchDropdownController — search + selection', () => {
   })
 })
 
+describe('SearchDropdownController — keyboard nav highlight cleanup', () => {
+  it('ArrowUp from row 0 clears the row highlight after returning to search input', async () => {
+    const { controller, fetchResults } = mount()
+    fetchResults.mockResolvedValue([{ id: '1', name: 'A' }, { id: '2', name: 'B' }])
+    controller.open()
+    await vi.runAllTimersAsync()
+
+    const searchInput = document.querySelector<HTMLInputElement>('.idevs-search-dropdown-input')!
+    searchInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }))
+
+    let rows = document.querySelectorAll<HTMLTableRowElement>('tbody tr')
+    expect(rows[0].classList.contains('idevs-row-focused')).toBe(true)
+
+    rows[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }))
+
+    rows = document.querySelectorAll<HTMLTableRowElement>('tbody tr')
+    expect(rows[0].classList.contains('idevs-row-focused')).toBe(false)
+  })
+})
+
 describe('SearchDropdownController — per-render listener cleanup', () => {
   it('rowCleanups does not grow unbounded across re-renders', async () => {
     const { controller, fetchResults } = mount({ enableSorting: true })

@@ -267,6 +267,28 @@ describe('SearchModalController — sorting', () => {
   })
 })
 
+describe('SearchModalController — keyboard nav highlight cleanup', () => {
+  it('ArrowUp from row 0 clears the row highlight after returning to search input', async () => {
+    const { controller, fetchResults } = mount()
+    fetchResults.mockResolvedValue([{ id: '1', name: 'A' }, { id: '2', name: 'B' }])
+    controller.open()
+    await vi.runAllTimersAsync()
+
+    // ArrowDown from search input puts focus on row 0 (highlighted).
+    const searchInput = document.querySelector<HTMLInputElement>('.idevs-search-modal-input')!
+    searchInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }))
+
+    let rows = document.querySelectorAll<HTMLTableRowElement>('tbody tr')
+    expect(rows[0].classList.contains('idevs-row-focused')).toBe(true)
+
+    // ArrowUp from row 0 returns focus to search input AND clears highlight.
+    rows[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }))
+
+    rows = document.querySelectorAll<HTMLTableRowElement>('tbody tr')
+    expect(rows[0].classList.contains('idevs-row-focused')).toBe(false)
+  })
+})
+
 describe('SearchModalController — per-render listener cleanup', () => {
   it('rowCleanups does not grow unbounded across re-renders', async () => {
     const { controller, fetchResults } = mount({ enableSorting: true })

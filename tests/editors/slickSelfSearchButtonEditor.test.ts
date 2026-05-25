@@ -134,4 +134,36 @@ describe('SlickSelfSearchButtonEditor', () => {
     vi.advanceTimersByTime(1)
     expect(() => editor.destroy()).not.toThrow()
   })
+
+  it('handleValueChange does NOT overwrite the canonical raw value with the formatted display text (masked pattern)', () => {
+    // Regression: previously the wrapper called this.editor.set_value
+    // (displayInput.value) which wrote the FORMATTED text back into the
+    // hidden domNode, corrupting the raw value the inner editor's input
+    // handler had just extracted via the masked pattern.
+    const { editor } = mountSlick({ maskedPattern: '0000-0000' })
+    vi.advanceTimersByTime(1) // run SlickEditorBase's setupEventHandlers
+
+    const inner = getInner(editor) as unknown as {
+      domNode: HTMLInputElement
+      set_value: (v: string | null) => void
+    }
+    const displayInput = inner.domNode.parentElement!.querySelector<HTMLInputElement>(
+      'input.editor',
+    )!
+
+    // Simulate the inner editor's input handler running: it applies the
+    // masked pattern (display='1234-5678') and writes the raw via set_value.
+    displayInput.value = '12345678'
+    displayInput.dispatchEvent(new Event('input'))
+
+    // After the inner handler: display formatted, domNode raw.
+    expect(displayInput.value).toBe('1234-5678')
+    expect(inner.domNode.value).toBe('12345678')
+
+    // The SlickEditorBase wraps additional 'input' listeners that fire
+    // handleValueChange. Those run after the inner handler. With the bug,
+    // handleValueChange would overwrite domNode with '1234-5678'.
+    // With the fix, domNode stays '12345678'.
+    expect(inner.domNode.value).toBe('12345678')
+  })
 })

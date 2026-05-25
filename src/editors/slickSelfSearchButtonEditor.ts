@@ -59,9 +59,14 @@ export class SlickSelfSearchButtonEditor<P extends EditorOptions = EditorOptions
   }
 
   protected override handleValueChange(): void {
-    const inputElement = this.getInputElement()
-    if (!inputElement) return
-    this.editor.set_value(inputElement.value)
+    // Intentionally does NOT call this.editor.set_value(inputElement.value).
+    // The inner IdevsSelfSearchButtonEditor's own input handler already
+    // wrote the canonical (raw) value to its hidden domNode via set_value —
+    // including masked-pattern extraction. Writing the display input's
+    // FORMATTED value back through set_value here would overwrite the raw
+    // value with the formatted one (e.g., '12345678' → '1234-5678'),
+    // corrupting the stored id. We just need to dispatch the grid's
+    // cellchange event via super.
     super.handleValueChange()
   }
 

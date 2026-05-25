@@ -297,8 +297,8 @@ export class SearchModalController {
       case 'ArrowDown':
         event.preventDefault()
         if (this.filteredItems.length > 0) {
-          this.focusIndex = 0
-          this.renderResults() // refresh focus highlight
+          // focusResultsRow already calls renderResults internally — no
+          // need for a separate inline render here.
           this.focusResultsRow(0)
         }
         break
@@ -447,8 +447,13 @@ export class SearchModalController {
         if (index > 0) {
           this.focusResultsRow(index - 1)
         } else {
-          this.searchInput.focus()
+          // Returning to search input from the first row. Reset focus state
+          // AND re-render so the .idevs-row-focused class + background-color
+          // are cleared (otherwise the row stays visually highlighted even
+          // though keyboard focus has moved to the search input).
           this.focusIndex = -1
+          this.renderResults()
+          this.searchInput.focus()
         }
         break
       case 'Enter':
