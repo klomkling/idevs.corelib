@@ -611,7 +611,11 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
   }
 
   get_required(): boolean {
-    return this.domNode.classList.contains('required')
+    // Align with validate(): a field is required when either the native
+    // attribute or the editor's marker class is present. The class covers
+    // editor-API writes via set_required(); the attribute covers cases where
+    // the markup ships the input with native `required` directly.
+    return this.domNode.hasAttribute('required') || this.domNode.classList.contains('required')
   }
 
   get required(): boolean {

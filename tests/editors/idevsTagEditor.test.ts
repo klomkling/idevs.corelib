@@ -246,6 +246,14 @@ describe('IdevsTagEditor — required state & validation', () => {
     const { editor } = mountEditor()
     expect(editor['validate']()).toBe(true)
   })
+
+  it('get_required() reflects a natively set required attribute, not just the class', () => {
+    const input = document.createElement('input')
+    input.setAttribute('required', '')
+    document.body.appendChild(input)
+    const editor = new IdevsTagEditor({ element: input })
+    expect(editor.get_required()).toBe(true)
+  })
 })
 
 describe('IdevsTagEditor — destroy cleanup', () => {
