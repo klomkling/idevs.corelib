@@ -130,13 +130,20 @@ export class IdevsDateEditor<
     })
   }
 
-  public getFlatpickrOptions(_input: HTMLElement): flatpickr.Options.Options {
+  public getFlatpickrOptions(input: HTMLElement): flatpickr.Options.Options {
+    // Start from the base class to inherit any options Serenity adds in future
+    // releases, then override the specific fields this subclass needs.
+    const baseOpts = super.getFlatpickrOptions(input) as flatpickr.Options.Options
     const userFormat = this.props.format ?? 'd/m/Y'
+
     const opt: flatpickr.Options.Options = {
+      ...baseOpts,
       clickOpens: false,
       allowInput: true,
       altInput: true,
       altFormat: userFormat,
+      // Always use ISO yyyy-MM-dd as the underlying value format so get_value()
+      // can return a stable, locale-independent string.
       dateFormat: 'Y-m-d',
       onOpen: (_sd, _ds, instance) => {
         setTimeout(() => {
@@ -167,10 +174,14 @@ export class IdevsDateEditor<
       ],
     }
 
+    // Our modal-placement logic supersedes the base class's. Set appendTo
+    // explicitly so the base's own side-effect setTimeout (which checks its
+    // local opt.appendTo) is idempotent relative to ours.
     const modal = this.domNode.closest('.modal')
     if (modal) {
       opt.appendTo = modal as HTMLElement
     } else {
+      opt.appendTo = undefined
       setTimeout(() => {
         const lateModal = this.domNode?.closest('.modal')
         const fp = this.getFlatpickr()
@@ -279,7 +290,7 @@ export class IdevsDateEditor<
 
   private focusCalendarSelection(instance: flatpickr.Instance, userFormat: string) {
     const days = instance.calendarContainer.querySelectorAll<HTMLElement>(
-      '.flatpickr-day, .flatpickr-day:not(.flatpickr-disabled)',
+      '.flatpickr-day:not(.flatpickr-disabled)',
     )
     const selected = Array.from(days).filter(d => d.classList.contains('selected'))
 

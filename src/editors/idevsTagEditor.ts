@@ -442,9 +442,11 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
   }
 
   protected hideDropdown() {
+    // Clear focus/highlight state first so that the next open never shows a
+    // stale focused item. clearDropdownFocus() also removes aria-activedescendant.
+    this.clearDropdownFocus()
     this.dropdownContainer.style.display = 'none'
     this.domNode.setAttribute('aria-expanded', 'false')
-    this.domNode.removeAttribute('aria-activedescendant')
   }
 
   protected isDropdownHidden(): boolean {
