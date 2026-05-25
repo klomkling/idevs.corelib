@@ -281,8 +281,6 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
 
   protected handleItemClick(e: Event, item: TagItem) {
     e.preventDefault()
-    const itemValue = tagItemToText(item)
-    this.set_value(itemValue)
     this.selectItem(item)
   }
 
@@ -454,15 +452,10 @@ export class IdevsTagEditor<P extends IdevsTagEditorOptions = IdevsTagEditorOpti
   }
 
   protected selectItem(item: TagItem) {
-    const oldValue = this.domNode.value
-
-    this.domNode.value = tagItemToText(item)
-
-    if (oldValue !== this.domNode.value) {
-      this.domNode.dispatchEvent(new Event('change', { bubbles: true }))
-      this.domNode.dispatchEvent(new Event('input', { bubbles: true }))
-    }
-
+    // Single canonical selection path: write through set_value() so the
+    // valueCasing contract is honored and change/input events fire exactly
+    // once (only if the value actually changed), then do the UI cleanup.
+    this.set_value(tagItemToText(item))
     this.hideDropdown()
     this.domNode.focus()
   }

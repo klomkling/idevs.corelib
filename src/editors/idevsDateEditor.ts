@@ -245,8 +245,12 @@ export class IdevsDateEditor<
             if (fp.isOpen) {
               event.preventDefault()
               event.stopPropagation()
+              // fp.close() triggers the onClose callback, which syncs
+              // domNode.value to fp.input.value (the ISO `Y-m-d` value).
+              // Don't reassign from target.value here — target is altInput
+              // (user-format), and overwriting would replace the canonical
+              // ISO with the display string.
               fp.close()
-              this.domNode.value = target.value
               Fluent.trigger(this.domNode, 'change')
             }
             break
@@ -254,18 +258,6 @@ export class IdevsDateEditor<
       },
       true,
     )
-  }
-
-  formatDateForFlatpickr = (value: string | Date, altFormat: string): string => {
-    const serenityFormat = altFormat
-      .replace(/d/g, 'dd')
-      .replace(/m/g, 'MM')
-      .replace(/Y/g, 'yyyy')
-      .replace(/H/g, 'HH')
-      .replace(/i/g, 'mm')
-      .replace(/S/g, 'ss')
-
-    return formatDate(value, serenityFormat)
   }
 
   private getFlatpickr(): flatpickr.Instance | undefined {
