@@ -37,9 +37,10 @@ export class IdevsDateEditor<
     this.updateElementReadOnly()
   }
 
-  destroy() {
+  override destroy(): void {
     this.classObserver?.disconnect()
     this.classObserver = undefined
+    this.detachKeyboardHandlers()
     if (this.domNode) {
       Fluent(this.domNode).off('validationerror.idevsdate')
     }
@@ -241,11 +242,6 @@ export class IdevsDateEditor<
 
     this.keyboardHandlerTarget = undefined
     this.keyboardHandler = undefined
-  }
-
-  public override destroy(): void {
-    this.detachKeyboardHandlers()
-    super.destroy()
   }
 
   protected attachKeyboardHandlers(fp: flatpickr.Instance): void {
