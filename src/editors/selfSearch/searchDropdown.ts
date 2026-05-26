@@ -235,10 +235,13 @@ export class SearchDropdownController {
     try {
       const results = await this.callbacks.fetchResults(query)
       if (this.isDestroyed) return
+      // Async race guard: see equivalent comment in searchModal.ts.
+      if (this.searchInput.value !== query) return
       this.items = results
       this.applyFilter()
     } catch {
       if (this.isDestroyed) return
+      if (this.searchInput.value !== query) return
       this.setState('error', 'Search failed. Please try again.')
     }
   }

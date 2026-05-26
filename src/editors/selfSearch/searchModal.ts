@@ -317,10 +317,17 @@ export class SearchModalController {
     try {
       const results = await this.callbacks.fetchResults(query)
       if (this.isDestroyed) return
+      // Async race guard: discard stale results when the user has typed a
+      // newer query while this fetch was in flight. Without this, an
+      // earlier-but-slower fetch could overwrite a later-but-faster one.
+      if (this.searchInput.value !== query) return
       this.items = results
       this.applyFilter()
     } catch {
       if (this.isDestroyed) return
+      // Same race guard for errors — don't flash an error from a stale
+      // request after a newer query is already pending/applied.
+      if (this.searchInput.value !== query) return
       this.setState('error', 'Search failed. Please try again.')
     }
   }

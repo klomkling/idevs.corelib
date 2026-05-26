@@ -316,6 +316,60 @@ describe('IdevsSelfSearchButtonEditor — aria-expanded reset on cancel', () => 
   })
 })
 
+describe('IdevsSelfSearchButtonEditor — focus restoration on cancel/select', () => {
+  it('modal cancel does NOT force focus to displayInput (lets controller restore invoker focus)', async () => {
+    const { input } = mount({ presentation: 'modal' })
+    const display = input.parentElement!.querySelector<HTMLInputElement>('input.editor')!
+    const searchBtn = input.parentElement!.querySelector<HTMLButtonElement>('button.search-btn')!
+
+    const focusSpy = vi.spyOn(display, 'focus')
+    serviceCallStub.mockImplementation(opts => opts.onSuccess?.({ Entities: [] }))
+    searchBtn.click()
+    await vi.runAllTimersAsync()
+
+    focusSpy.mockClear()
+    const modalInput = document.querySelector<HTMLInputElement>('.idevs-search-modal-input')!
+    modalInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+
+    // Modal controller's close() restores focus to the invoker; editor must
+    // NOT override that with displayInput.focus().
+    expect(focusSpy).not.toHaveBeenCalled()
+  })
+
+  it('dropdown cancel DOES focus displayInput (anchor IS displayInput)', async () => {
+    const { input } = mount({ presentation: 'dropdown' })
+    const display = input.parentElement!.querySelector<HTMLInputElement>('input.editor')!
+    const searchBtn = input.parentElement!.querySelector<HTMLButtonElement>('button.search-btn')!
+
+    serviceCallStub.mockImplementation(opts => opts.onSuccess?.({ Entities: [] }))
+    searchBtn.click()
+    await vi.runAllTimersAsync()
+
+    const focusSpy = vi.spyOn(display, 'focus')
+    const dropdownInput = document.querySelector<HTMLInputElement>('.idevs-search-dropdown-input')!
+    dropdownInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+
+    expect(focusSpy).toHaveBeenCalled()
+  })
+
+  it('modal selection does NOT force focus to displayInput', async () => {
+    const { input } = mount({ presentation: 'modal' })
+    const display = input.parentElement!.querySelector<HTMLInputElement>('input.editor')!
+    const searchBtn = input.parentElement!.querySelector<HTMLButtonElement>('button.search-btn')!
+
+    serviceCallStub.mockImplementation(opts =>
+      opts.onSuccess?.({ Entities: [{ CustomerId: '1', CustomerName: 'A' }] }),
+    )
+    searchBtn.click()
+    await vi.runAllTimersAsync()
+
+    const focusSpy = vi.spyOn(display, 'focus')
+    document.querySelector<HTMLTableRowElement>('tbody tr')!.click()
+
+    expect(focusSpy).not.toHaveBeenCalled()
+  })
+})
+
 describe('IdevsSelfSearchButtonEditor — service error preservation', () => {
   it('rejects fetchResults with an Error whose cause is the original service payload', async () => {
     const { editor } = mount()

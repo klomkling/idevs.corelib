@@ -184,6 +184,41 @@ describe('SearchDropdownController — search + selection', () => {
   })
 })
 
+describe('SearchDropdownController — async race guard', () => {
+  it('discards stale fetchResults when the user has typed a newer query', async () => {
+    let resolveOld: (v: Record<string, unknown>[]) => void = () => {}
+    let resolveNew: (v: Record<string, unknown>[]) => void = () => {}
+    let callCount = 0
+
+    const { controller } = mount({ searchDebounceMs: 0 }, {
+      fetchResults: () => {
+        callCount++
+        return new Promise<Record<string, unknown>[]>(resolve => {
+          if (callCount === 1) resolveOld = resolve
+          else resolveNew = resolve
+        })
+      },
+    })
+    controller.open('old')
+
+    const input = document.querySelector<HTMLInputElement>('.idevs-search-dropdown-input')!
+    input.value = 'new'
+    input.dispatchEvent(new Event('input'))
+    await vi.runAllTimersAsync()
+
+    resolveNew([{ id: 'NEW', name: 'New result' }])
+    await vi.runAllTimersAsync()
+    let cells = document.querySelectorAll<HTMLTableCellElement>('tbody td')
+    expect(Array.from(cells).some(c => c.textContent === 'NEW')).toBe(true)
+
+    resolveOld([{ id: 'OLD', name: 'Old result' }])
+    await vi.runAllTimersAsync()
+    cells = document.querySelectorAll<HTMLTableCellElement>('tbody td')
+    expect(Array.from(cells).some(c => c.textContent === 'NEW')).toBe(true)
+    expect(Array.from(cells).some(c => c.textContent === 'OLD')).toBe(false)
+  })
+})
+
 describe('SearchDropdownController — keyboard nav highlight cleanup', () => {
   it('ArrowUp from row 0 clears the row highlight after returning to search input', async () => {
     const { controller, fetchResults } = mount()

@@ -267,6 +267,46 @@ describe('SearchModalController — sorting', () => {
   })
 })
 
+describe('SearchModalController — async race guard', () => {
+  it('discards stale fetchResults when the user has typed a newer query', async () => {
+    // Two fetches in flight. The OLDER one resolves AFTER the NEWER one.
+    // Without the race guard, the older results would overwrite the newer.
+    let resolveOld: (v: Record<string, unknown>[]) => void = () => {}
+    let resolveNew: (v: Record<string, unknown>[]) => void = () => {}
+    let callCount = 0
+
+    const { controller } = mount({ searchDebounceMs: 0 }, {
+      fetchResults: () => {
+        callCount++
+        return new Promise<Record<string, unknown>[]>(resolve => {
+          if (callCount === 1) resolveOld = resolve
+          else resolveNew = resolve
+        })
+      },
+    })
+    controller.open('old')
+
+    const input = document.querySelector<HTMLInputElement>('.idevs-search-modal-input')!
+    // Type a new query while the old fetch is in flight
+    input.value = 'new'
+    input.dispatchEvent(new Event('input'))
+    await vi.runAllTimersAsync() // flush debounce → second fetch issued
+
+    // Resolve newer first → should apply
+    resolveNew([{ id: 'NEW', name: 'New result' }])
+    await vi.runAllTimersAsync()
+    let cells = document.querySelectorAll<HTMLTableCellElement>('tbody td')
+    expect(Array.from(cells).some(c => c.textContent === 'NEW')).toBe(true)
+
+    // Resolve older → should be DISCARDED (input.value is still 'new')
+    resolveOld([{ id: 'OLD', name: 'Old result' }])
+    await vi.runAllTimersAsync()
+    cells = document.querySelectorAll<HTMLTableCellElement>('tbody td')
+    expect(Array.from(cells).some(c => c.textContent === 'NEW')).toBe(true)
+    expect(Array.from(cells).some(c => c.textContent === 'OLD')).toBe(false)
+  })
+})
+
 describe('SearchModalController — keyboard nav highlight cleanup', () => {
   it('ArrowUp from row 0 clears the row highlight after returning to search input', async () => {
     const { controller, fetchResults } = mount()

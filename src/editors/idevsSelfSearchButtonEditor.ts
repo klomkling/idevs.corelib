@@ -395,12 +395,21 @@ export class IdevsSelfSearchButtonEditor<
     const callbacks: SearchPresentationCallbacks = {
       onSelect: item => this.handleSelection(item),
       onCancel: () => {
-        // Reset combobox state and return focus. The dropdown controller
-        // resets aria-expanded on the anchor itself, but the modal
-        // controller doesn't touch displayInput — without this, the
-        // combobox role would stay aria-expanded='true' after a cancel.
+        // Reset combobox aria state (the modal controller doesn't touch the
+        // displayInput; the dropdown controller already toggles aria-expanded
+        // on the anchor, which IS the displayInput — both reach the right
+        // outcome via this single assignment).
         this.displayInput.setAttribute('aria-expanded', 'false')
-        this.displayInput.focus()
+        // Focus restoration:
+        //  - modal: SearchModalController.close() already returned focus to
+        //    the element that opened the dialog (typically the search
+        //    button). We MUST NOT call displayInput.focus() here or we'd
+        //    override that restoration.
+        //  - dropdown: the anchor IS displayInput; the controller doesn't
+        //    track an invoker, so we focus it explicitly.
+        if (this.props.presentation === 'dropdown') {
+          this.displayInput.focus()
+        }
       },
       fetchResults: query => this.fetchResults(query),
     }
@@ -501,7 +510,7 @@ export class IdevsSelfSearchButtonEditor<
     const idCol = this.props.idColumnName
     if (!idCol) {
       this.displayInput.setAttribute('aria-expanded', 'false')
-      this.displayInput.focus()
+      this.focusDisplayInputIfDropdown()
       return
     }
     const id = data[idCol]
@@ -511,7 +520,7 @@ export class IdevsSelfSearchButtonEditor<
       if (text != null) this.displayInput.value = String(text)
     }
     this.displayInput.setAttribute('aria-expanded', 'false')
-    this.displayInput.focus()
+    this.focusDisplayInputIfDropdown()
 
     // Dispatch dataSelected CustomEvent on the domNode (for Slick wrapper +
     // any direct listeners) BEFORE invoking the configured callback so that
@@ -520,5 +529,18 @@ export class IdevsSelfSearchButtonEditor<
 
     if (this.props.onDataSelected) this.props.onDataSelected(data)
     for (const sub of this.subscribers) sub(data)
+  }
+
+  /**
+   * Focus the display input ONLY for the dropdown presentation. For modal,
+   * the SearchModalController's close() already restored focus to the
+   * invoker (typically the search button) — overriding that with
+   * displayInput.focus() would land focus in the wrong place for keyboard
+   * users.
+   */
+  private focusDisplayInputIfDropdown(): void {
+    if (this.props.presentation === 'dropdown') {
+      this.displayInput.focus()
+    }
   }
 }
