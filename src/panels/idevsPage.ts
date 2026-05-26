@@ -39,11 +39,15 @@ export class IdevsPage<P extends IdevsPageOptions = IdevsPageOptions> extends Wi
     const titleDiv = Fluent('div').class(['panel-titlebar']).appendTo(this.element)
     this.renderTitle(titleDiv.getNode())
 
-    this.toolbar = new Toolbar({ buttons: this.getButtons() })
+    // Cache getButtons() — without this, an override that returns a fresh
+    // array (or has side effects) would render a different set than the
+    // toolbar was constructed with.
+    const buttons = this.getButtons()
+    this.toolbar = new Toolbar({ buttons })
     const toolbarDiv = Fluent('div')
       .class(['s-Toolbar', 'clearfix'])
       .appendTo(this.element)
-    this.getButtons().forEach(button => {
+    buttons.forEach(button => {
       this.toolbar.createButton(toolbarDiv.getNode(), button)
     })
     this.toolbar.render()

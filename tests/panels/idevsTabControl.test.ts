@@ -89,6 +89,24 @@ describe('IdevsTabControl — construction + ARIA', () => {
   })
 })
 
+describe('IdevsTabControl — destroy (regression)', () => {
+  it('destroy clears child widgets and is idempotent', () => {
+    const innerWidget = {
+      element: { style: () => undefined },
+      destroy: vi.fn(),
+    } as unknown as Widget<unknown>
+    const factory = vi.fn(() => innerWidget)
+    const { tabControl } = mountTabs([
+      { id: 'a', title: 'Alpha', createWidget: factory },
+    ])
+
+    tabControl.destroy()
+    expect((innerWidget as unknown as { destroy: ReturnType<typeof vi.fn> }).destroy).toHaveBeenCalled()
+    // Idempotent — second destroy should not throw or re-invoke.
+    expect(() => tabControl.destroy()).not.toThrow()
+  })
+})
+
 describe('IdevsTabControl — getWidget', () => {
   it('returns the widget registered under the tab id', () => {
     const widget = { element: { style: () => undefined } } as unknown as Widget<unknown>

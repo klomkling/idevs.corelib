@@ -59,8 +59,14 @@ export class IdevsPropertyDialog<P = unknown> extends PropertyDialog<unknown, P>
   }
 
   private restoreActiveModal(): void {
-    const modal = this.domNode.closest('.modal')
-    const currentLevel = parseInt(Fluent(modal as HTMLElement).data('qrouterorder') ?? '0', 10)
+    // Guard against detached DOM (closest can return null when the dialog
+    // is being torn down).
+    const modal = this.domNode.closest<HTMLElement>('.modal')
+    if (!modal) {
+      setActiveModal(0)
+      return
+    }
+    const currentLevel = parseInt(Fluent(modal).data('qrouterorder') ?? '0', 10)
     setActiveModal(currentLevel)
   }
 }

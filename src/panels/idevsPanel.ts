@@ -88,10 +88,14 @@ export class IdevsPanel<P extends IdevsPanelOptions = IdevsPanelOptions> extends
   }
 
   static override createDefaultElement(): HTMLElement {
+    // CSS class matches the widget identity (s-IdevsPanel). The PowerACC
+    // source used 's-CsiFilterPanel' here even though the class was
+    // CsiPanel — a naming mismatch that would have broken selector-based
+    // lookups against an s-IdevsPanel-style stylesheet.
     return Fluent('div')
       .class([
-        'idevs-filter-panel',
-        's-IdevsFilterPanel',
+        'idevs-panel',
+        's-IdevsPanel',
         'w-100',
         'd-flex',
         'flex-column',
@@ -133,7 +137,7 @@ export class IdevsPanel<P extends IdevsPanelOptions = IdevsPanelOptions> extends
       ])
       .appendTo(container)
     this.panelContainer = Fluent('div')
-      .class(['idevs-filter-criteria-panel', 'flex-fill', 'd-flex', 'flex-wrap'])
+      .class(['idevs-panel-criteria', 'flex-fill', 'd-flex', 'flex-wrap'])
       .appendTo(wrapper)
     this.createFloatingTitle(wrapper)
   }

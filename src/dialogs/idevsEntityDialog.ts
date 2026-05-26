@@ -169,7 +169,12 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
   protected override onSaveSuccess(response: SaveResponse): void {
     super.onSaveSuccess(response)
     this.initialEntity = this.getSaveEntity() as TItem
+    // Dispatch both casings to bridge the PowerACC source bug: source's
+    // IdevsEntityDialog dispatched onDataChange (camelCase) but
+    // OffCanvasPanel listened for ondatachange (lowercase). Keeping both
+    // makes either spelling work for downstream consumers during migration.
     this.element[0].dispatchEvent(new Event('onDataChange'))
+    this.element[0].dispatchEvent(new Event('ondatachange'))
   }
 
   protected override onDialogClose(result?: string): void {
@@ -190,6 +195,12 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
   }
 
   public hasUnsavedChanges(): boolean {
+    // Treat the pre-snapshot window (initialEntity not yet populated, e.g.,
+    // immediately after open or during the 2-second loadEntity delay) as
+    // "no changes". Without this guard, beforeunload prompts and
+    // confirm-on-close dialogs fire spuriously the moment the user opens
+    // the dialog. Real edits never start before the snapshot exists.
+    if (this.initialEntity == null) return false
     const currentEntity = this.getSaveEntity()
     return !this.areEntitiesEqual(currentEntity, this.initialEntity)
   }
@@ -238,8 +249,14 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
   }
 
   private restoreActiveModal(): void {
-    const modal = this.domNode.closest('.modal')
-    const currentLevel = parseInt(Fluent(modal as HTMLElement).data('qrouterorder') ?? '0', 10)
+    // Guard against detached DOM (closest can return null when the dialog
+    // is being torn down or used in a non-modal context).
+    const modal = this.domNode.closest<HTMLElement>('.modal')
+    if (!modal) {
+      setActiveModal(0)
+      return
+    }
+    const currentLevel = parseInt(Fluent(modal).data('qrouterorder') ?? '0', 10)
     setActiveModal(currentLevel)
   }
 

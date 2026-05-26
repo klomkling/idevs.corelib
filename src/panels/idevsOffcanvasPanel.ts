@@ -22,8 +22,11 @@ export type IdevsOffcanvasPanelOptions = {
   target: HTMLElement
   initDialog: () => EntityDialog<unknown, unknown>
   onDataChangeCallback?: () => void
-  sliderWidth?: string | number
-  entityOrId?: string | number | Record<string, unknown>
+  // NOTE: PowerACC's source declared `sliderWidth` and `entityOrId` on the
+  // options type but never read either. Dropped here to avoid a misleading
+  // API surface. Consumers needing custom panel width should set it via
+  // CSS or extend this class; consumers wanting auto-load by id can pass
+  // it to `load(id)` directly.
 }
 
 function generateRandomId(length: number): string {
@@ -32,9 +35,13 @@ function generateRandomId(length: number): string {
 
 @Decorators.registerClass('Idevs.CoreLib.IdevsOffcanvasPanel')
 export class IdevsOffcanvasPanel extends Widget<IdevsOffcanvasPanelOptions> {
+  private static readonly BODY_OPEN_CLASS = 'with-offcanvas-panel'
+
   private readonly canvasId: string
   private overlayDiv!: HTMLElement
   private readonly dlg: EntityDialog<unknown, unknown>
+  private isLoaded = false
+  private isTorn = false
 
   constructor(prop: WidgetProps<IdevsOffcanvasPanelOptions>) {
     super(prop)
@@ -46,11 +53,42 @@ export class IdevsOffcanvasPanel extends Widget<IdevsOffcanvasPanelOptions> {
     target.appendChild(this.domNode)
 
     // The embedded dialog signals data changes via jQuery custom event.
-    // We listen, invoke the consumer's callback, and tear down.
-    $(this.dlg.domNode).on('ondatachange', () => {
+    // Both event spellings supported (IdevsEntityDialog dispatches both
+    // 'onDataChange' and 'ondatachange' — see batch 4a Copilot review).
+    const handler = () => {
       this.props.onDataChangeCallback?.()
-      this.domNode.remove()
-    })
+      this.teardown()
+    }
+    $(this.dlg.domNode).on('onDataChange ondatachange', handler)
+  }
+
+  override destroy(): void {
+    this.teardown()
+    super.destroy()
+  }
+
+  /**
+   * Idempotent teardown — removes the body class, detaches the jQuery
+   * data-change listener, destroys the embedded dialog, and removes the
+   * panel's DOM. Used by both the dialog's data-change event and the
+   * Widget destroy() override.
+   */
+  private teardown(): void {
+    if (this.isTorn) return
+    this.isTorn = true
+
+    document.body.classList.remove(IdevsOffcanvasPanel.BODY_OPEN_CLASS)
+    try {
+      $(this.dlg.domNode).off('onDataChange ondatachange')
+    } catch {
+      /* dialog DOM may already be detached */
+    }
+    try {
+      this.dlg.destroy()
+    } catch {
+      /* dialog destroy can throw if Serenity's chain races; swallow */
+    }
+    this.domNode.remove()
   }
 
   public load(id?: string | number): void {
@@ -63,7 +101,19 @@ export class IdevsOffcanvasPanel extends Widget<IdevsOffcanvasPanelOptions> {
       )
     }
 
-    document.body.classList.add('with-offcanvas-panel')
+    document.body.classList.add(IdevsOffcanvasPanel.BODY_OPEN_CLASS)
+    this.isLoaded = true
+
+    // Hook into Bootstrap's offcanvas hidden event (fires on Esc, backdrop
+    // click, or close-button click) to drop the body class. Without this
+    // the `with-offcanvas-panel` style would persist after dismissal.
+    this.overlayDiv.addEventListener(
+      'hidden.bs.offcanvas',
+      () => {
+        document.body.classList.remove(IdevsOffcanvasPanel.BODY_OPEN_CLASS)
+      },
+      { once: true },
+    )
 
     const body = this.overlayDiv.querySelector('.offcanvas-body')
     if (!body) return

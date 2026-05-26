@@ -30,6 +30,8 @@ export class IdevsTabControl<
   P extends IdevsTabControlOptions = IdevsTabControlOptions,
 > extends Widget<P> {
   private widgets: Record<string, Widget<unknown>> = {}
+  private nav?: Fluent
+  private resizeTimer?: ReturnType<typeof setTimeout>
 
   static override createDefaultElement(): HTMLElement {
     return Fluent('div')
@@ -56,6 +58,7 @@ export class IdevsTabControl<
       .attr('id', `${this.uniqueName}-idevs-tabs`)
       .attr('role', 'tablist')
       .appendTo(this.element)
+    this.nav = nav
 
     const tabContainer = Fluent('div')
       .class(['h-100', 'overflow-auto'])
@@ -120,13 +123,42 @@ export class IdevsTabControl<
     nav.on('shown.bs.tab', 'button[data-bs-toggle="tab"]', () => {
       // Resize any SlickGrid contained inside a freshly-shown tab — without
       // this, the grid canvas measures incorrectly while the pane was hidden.
-      setTimeout(() => {
+      // Timer handle stored so destroy() can cancel a pending resize.
+      this.resizeTimer = setTimeout(() => {
+        this.resizeTimer = undefined
         for (const id in this.widgets) {
           const widget = this.widgets[id] as { slickGrid?: { resizeCanvas?: () => void } }
           widget?.slickGrid?.resizeCanvas?.()
         }
       }, 10)
     })
+  }
+
+  override destroy(): void {
+    if (this.resizeTimer !== undefined) {
+      clearTimeout(this.resizeTimer)
+      this.resizeTimer = undefined
+    }
+    // Detach the delegated shown.bs.tab handler so it can't fire after
+    // teardown (Bootstrap retains the binding otherwise).
+    if (this.nav) {
+      try {
+        this.nav.off('shown.bs.tab')
+      } catch {
+        /* nav already detached */
+      }
+    }
+    // Destroy owned tab widgets first — they may hold references back
+    // through this controller.
+    for (const id in this.widgets) {
+      try {
+        this.widgets[id].destroy()
+      } catch {
+        /* swallow teardown errors */
+      }
+    }
+    this.widgets = {}
+    super.destroy()
   }
 
   /** Get the widget instance associated with a given tab id. */

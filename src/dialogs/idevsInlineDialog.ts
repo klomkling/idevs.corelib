@@ -78,6 +78,20 @@ export class IdevsInlineDialog<TEntity = Record<string, unknown>> extends Widget
     this.initializeDialog()
   }
 
+  override destroy(): void {
+    // Tear down the embedded dialog before our own destroy chain — its
+    // form change listeners hold references back through `this`, so
+    // disposing it first ensures no listener fires during teardown.
+    if (this.dialog) {
+      try {
+        this.dialog.destroy()
+      } catch {
+        /* swallow — teardown errors are noise */
+      }
+    }
+    super.destroy()
+  }
+
   public async callPageCallback<K extends keyof IdevsInlineDialogCallbacks<TEntity>>(
     callbackName: K,
     ...args: Parameters<NonNullable<IdevsInlineDialogCallbacks<TEntity>[K]>>
@@ -114,10 +128,13 @@ export class IdevsInlineDialog<TEntity = Record<string, unknown>> extends Widget
           reject(new Error('Save operation failed'))
           return
         }
-        // Best-effort onSave callback; failures here don't block resolution.
-        void this.callPageCallback('onSave', this.getEntity(), response).then(() => {
-          resolve(response)
-        })
+        // Best-effort onSave callback; settles the outer Promise regardless
+        // of whether the callback resolves, rejects, or throws. Without the
+        // .catch leg, an onSave that throws would leave saveDialogForm
+        // pending forever AND emit an unhandledrejection.
+        this.callPageCallback('onSave', this.getEntity(), response)
+          .then(() => resolve(response))
+          .catch(() => resolve(response))
       })
     })
   }
