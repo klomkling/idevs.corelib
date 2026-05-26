@@ -184,6 +184,29 @@ describe('SearchDropdownController — search + selection', () => {
   })
 })
 
+describe('SearchDropdownController — deferred-focus cancellation', () => {
+  it('open()+close() before the focus timer fires does NOT focus the hidden panel', () => {
+    const { controller, fetchResults } = mount()
+    fetchResults.mockResolvedValue([])
+    controller.open()
+    controller.close()
+
+    // Flush the deferred focus timer scheduled in open().
+    vi.advanceTimersByTime(1)
+
+    const searchInput = document.querySelector<HTMLInputElement>('.idevs-search-dropdown-input')!
+    expect(document.activeElement).not.toBe(searchInput)
+  })
+
+  it('destroy() cancels the pending open-focus timer', () => {
+    const { controller, fetchResults } = mount()
+    fetchResults.mockResolvedValue([])
+    controller.open()
+    controller.destroy()
+    expect(() => vi.advanceTimersByTime(1)).not.toThrow()
+  })
+})
+
 describe('SearchDropdownController — async race guard', () => {
   it('discards stale fetchResults when the user has typed a newer query', async () => {
     let resolveOld: (v: Record<string, unknown>[]) => void = () => {}

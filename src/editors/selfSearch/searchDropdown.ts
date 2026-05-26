@@ -41,6 +41,12 @@ export class SearchDropdownController {
   private debounceTimer?: ReturnType<typeof setTimeout>
   private isDestroyed = false
   private isOpenFlag = false
+  /**
+   * Pending focus timer scheduled by open(). Tracked so close()/destroy()
+   * can cancel it — prevents a fast open-then-close from focusing a hidden
+   * panel after the user has already dismissed it.
+   */
+  private openFocusTimer?: ReturnType<typeof setTimeout>
   private readonly id: string
 
   constructor(
@@ -64,14 +70,30 @@ export class SearchDropdownController {
     this.searchInput.value = initialQuery
     this.runSearch(initialQuery)
     this.position()
-    setTimeout(() => this.searchInput.focus(), 0)
+    // Tracked + guarded focus deferral. An immediate close (Escape, click-
+    // outside, destroy) cancels the timer; the in-callback guard handles
+    // the race where the timer is scheduled but hasn't fired yet.
+    this.clearOpenFocusTimer()
+    this.openFocusTimer = setTimeout(() => {
+      this.openFocusTimer = undefined
+      if (this.isDestroyed || !this.isOpenFlag) return
+      this.searchInput.focus()
+    }, 0)
   }
 
   close(): void {
     if (this.isDestroyed) return
+    this.clearOpenFocusTimer()
     this.isOpenFlag = false
     this.panel.style.display = 'none'
     this.anchor.setAttribute('aria-expanded', 'false')
+  }
+
+  private clearOpenFocusTimer(): void {
+    if (this.openFocusTimer !== undefined) {
+      clearTimeout(this.openFocusTimer)
+      this.openFocusTimer = undefined
+    }
   }
 
   isOpen(): boolean {
@@ -82,6 +104,7 @@ export class SearchDropdownController {
     if (this.isDestroyed) return
     this.isDestroyed = true
     this.clearDebounceTimer()
+    this.clearOpenFocusTimer()
     this.drainRowCleanups()
     for (const cleanup of this.cleanups) {
       try {

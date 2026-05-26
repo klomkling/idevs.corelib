@@ -267,6 +267,38 @@ describe('SearchModalController — sorting', () => {
   })
 })
 
+describe('SearchModalController — deferred-focus cancellation', () => {
+  it('open()+close() before the focus timer fires does NOT steal focus from the invoker', () => {
+    // Set up a focusable invoker, focus it, open the modal (which captures
+    // the invoker), then close immediately — both BEFORE the setTimeout(0)
+    // focus on the search input runs. Without the fix, the timer would
+    // fire after close() and steal focus back from the invoker.
+    const invoker = document.createElement('button')
+    document.body.appendChild(invoker)
+    invoker.focus()
+
+    const { controller, fetchResults } = mount()
+    fetchResults.mockResolvedValue([])
+    controller.open()
+    // close() runs while the open-focus timer is still pending
+    controller.close()
+
+    // Now flush the timer. With the bug, this would focus the search input.
+    vi.advanceTimersByTime(1)
+
+    const searchInput = document.querySelector<HTMLInputElement>('.idevs-search-modal-input')!
+    expect(document.activeElement).not.toBe(searchInput)
+  })
+
+  it('destroy() cancels the pending open-focus timer', () => {
+    const { controller, fetchResults } = mount()
+    fetchResults.mockResolvedValue([])
+    controller.open()
+    controller.destroy()
+    expect(() => vi.advanceTimersByTime(1)).not.toThrow()
+  })
+})
+
 describe('SearchModalController — async race guard', () => {
   it('discards stale fetchResults when the user has typed a newer query', async () => {
     // Two fetches in flight. The OLDER one resolves AFTER the NEWER one.

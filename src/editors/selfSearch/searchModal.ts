@@ -59,6 +59,13 @@ export class SearchModalController {
   private sortState: SortState = null
   private state: StateKind = 'idle'
   private invokerElement: HTMLElement | null = null
+  /**
+   * Pending focus timer scheduled by open(). Tracked so close()/destroy()
+   * can cancel it — without cancellation, a fast open-then-close sequence
+   * would let the deferred focus fire AFTER close()'s focus restoration,
+   * stealing focus back from the invoker.
+   */
+  private openFocusTimer?: ReturnType<typeof setTimeout>
   /** Controller-lifetime listeners. Drained only in destroy(). */
   private cleanups: Array<() => void> = []
   /**
@@ -89,12 +96,23 @@ export class SearchModalController {
     this.dialogEl.setAttribute('aria-modal', 'true')
     this.searchInput.value = initialQuery
     this.runSearch(initialQuery)
-    // Focus the search box once the dialog is visible.
-    setTimeout(() => this.searchInput.focus(), 0)
+    // Focus the search box once the dialog is visible. Stored for
+    // cancellation so an immediate close() doesn't let this timer fire
+    // afterward and steal focus from the restored invoker.
+    this.clearOpenFocusTimer()
+    this.openFocusTimer = setTimeout(() => {
+      this.openFocusTimer = undefined
+      if (this.isDestroyed) return
+      // Guard against open-then-close races: the dialog must still be
+      // visible by the time we focus its input.
+      if (this.root.style.display === 'none') return
+      this.searchInput.focus()
+    }, 0)
   }
 
   close(): void {
     if (this.isDestroyed) return
+    this.clearOpenFocusTimer()
     this.root.style.display = 'none'
     this.dialogEl.setAttribute('aria-modal', 'false')
     // Return focus to the element that opened us.
@@ -102,10 +120,18 @@ export class SearchModalController {
     this.invokerElement = null
   }
 
+  private clearOpenFocusTimer(): void {
+    if (this.openFocusTimer !== undefined) {
+      clearTimeout(this.openFocusTimer)
+      this.openFocusTimer = undefined
+    }
+  }
+
   destroy(): void {
     if (this.isDestroyed) return
     this.isDestroyed = true
     this.clearDebounceTimer()
+    this.clearOpenFocusTimer()
     this.drainRowCleanups()
     for (const cleanup of this.cleanups) {
       try {
