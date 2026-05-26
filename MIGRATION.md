@@ -1,5 +1,83 @@
 # Migration Guide
 
+## 1.3.x → 1.4.0 — batch 4a dialog/panel foundation
+
+### New dialog classes
+
+All in `src/dialogs/`, exported from the public barrel.
+
+- `IdevsPropertyDialog` (decorator: `Idevs.CoreLib.IdevsPropertyDialog`) — replaces PowerACC's `CsiPropertyDialog`. Extends Serenity `PropertyDialog`; integrates with modal-stack helpers; dispatches `onDialogClose` CustomEvent.
+- `IdevsEntityDialog` (decorator: `Idevs.CoreLib.IdevsEntityDialog`) — replaces PowerACC's `CsiEntityDialog`. Adds dirty-check confirm-on-close, clone mode (`__idevsCloneMode` marker, renamed from `__csiCloneMode`), and a custom close button.
+- `IdevsInlineDialog` (decorator: `Idevs.CoreLib.IdevsInlineDialog`) — replaces PowerACC's `CsiInlineDialog`. Embeds an EntityDialog inline (non-modal) with custom buttons + empty field slots.
+- `IdevsSearchDialog` (decorator: `Idevs.CoreLib.IdevsSearchDialog`) — replaces PowerACC's `CsiSearchDialog`. Abstract base for search-result dialogs with grid integration + clear/new toolbar buttons.
+
+### New panel classes
+
+All in `src/panels/`, exported from the public barrel.
+
+- `IdevsPage` (decorator: `Idevs.CoreLib.IdevsPage`) — replaces PowerACC's `CsiPage`. Page-level container; no preact dependency (source used `render(<CsiTitle/>)`; ported with plain DOM).
+- `IdevsPanel` (decorator: `Idevs.CoreLib.IdevsPanel`) — replaces PowerACC's `CsiPanel`. Field-rendering container with label + input pairs.
+- `IdevsOffcanvasPanel` (decorator: `Idevs.CoreLib.IdevsOffcanvasPanel`) — replaces PowerACC's `OffCanvasPanel`. Bootstrap offcanvas slide-out hosting an EntityDialog.
+- `IdevsTabControl` (decorator: `Idevs.CoreLib.IdevsTabControl`) — replaces PowerACC's `CsiTabControl`. Bootstrap tabs with full WAI-ARIA wiring.
+
+### New helpers
+
+- `src/helpers/layoutHelper.ts` — 21 DOM/layout utilities ported from PowerACC's `LayoutHelper.ts`. **Behavioral change**: the source attached 7 of these as `HTMLElement.prototype` methods; they are now plain functions:
+
+  ```ts
+  // PowerACC:
+  element.createLayout(3, 'col')
+
+  // idevs.corelib:
+  import { createLayout } from '@idevs/corelib/helpers'
+  createLayout(element, 3, 'col')
+  ```
+
+  Affected functions: `createLayout`, `addElementGroup`, `createGroup`, `addElements`, `addElementsWithEmptyElement`, `setTabIndex`, `groupColumnHeader`.
+
+  Note: `layoutHelper.ts`'s async polling `getElementHeight` is re-exported as `waitForElementHeight` to disambiguate from `utils/dom.ts`'s synchronous variant.
+
+- `src/helpers/filterHelper.ts` — `clearFilter(filters)` ported from PowerACC's `FilterHelper.ts`.
+
+- `src/helpers/dialogHelpers.ts` (plural — new file, leaves existing `dialogHelper.ts` untouched) — generic dialog/modal helpers from PowerACC's `Dialogs.ts`. Exports: `setDialogSize`, `fixMobileCloseDialog`, `groupFields`, `setActiveModal`, `setInactiveModal`, `disableRadioButtons`, `enableRadioButtons`, `enableRadioButtonEditor`, `disableRadioButtonEditor`, `enableEditor`, `disableEditor`, `disableToolbarButton`, `enableToolbarButton`, `toggleInputValidateMessage`, `addSearchButton`, `SearchDialogOptions`, `IdevsDialogEventName`, `createCustomEvent`.
+
+### NOT ported (stay in PowerACC)
+
+- `ShippingMarkEntityDialog`, `ShippingMarkPanel` — PowerACC's shipping-mark module.
+- The PowerACC-domain types from `Dialogs.ts`: `NameValueCollection`, `RequestApprovalDetailParameter`, `IvnRequestApprovalDetailParameter`, `BookingRequestApprovalDetailParameter`, `RequestApprovalParameter`, `RequestOnedateReportParameter`, `InventoryRequestApprovalParameter`, `BookingRequestApprovalParameter`, `RequestPrintShippingMarkParameter`. These reference `@/ServerTypes/Sales/ApprovalRequestRow` and similar — domain code stays in PowerACC.
+
+### Breaking API renames
+
+- PowerACC's PascalCase assignment-style setters (`dialog.FilterKeys = ...`, `dialog.CriteriaKeys = ...`, `dialog.DialogSize = ...`) are replaced with camelCase methods on dialogs: `setFilterKeys()`, `setCriteriaKeys()`, `setDialogSize()`, `setDialogType()`, `setDialogPermission()`, `setPreItems()`.
+- `IdevsInlineDialog.IdevsCustomButton.style` and `IdevsInlineDialog.IdevsEmptyField.style` no longer accept a raw CSS-string variant (CSS-injection vector) — use `Partial<CSSStyleDeclaration>` only.
+- `CsiPanel.PanelTitle` / `CsiPanel.Fields` getters/setters → `IdevsPanel.title` + `IdevsPanel.setTitle()` + `IdevsPanel.getFields()` + `IdevsPanel.setFields()`.
+- Clone-mode marker `__csiCloneMode` → `__idevsCloneMode`. Consumers that inspect this marker directly need to migrate (rare — typically only `isCloneMode()` users).
+- `IdevsPanel`'s editor factory no longer special-cases `CsiDateEditor` for the `format: 'd/m/Y'` default. Consumers using `IdevsDateEditor` (which lives at the `@idevs/corelib/editors/idevsDateEditor` subpath because of its optional `flatpickr` peer dep) must set `format: 'd/m/Y'` explicitly in their `editorOptions`.
+
+### Hardening deltas vs PowerACC source
+
+- **Security**: XSS-safe label markup in `IdevsPanel` and `toggleInputValidateMessage` (DOM API + `textContent` + `createElement('sup')` — replaces the source's raw HTML-property writes on form labels). `IdevsOffcanvasPanel`'s titlebar copy uses `replaceChildren(cloneNode())` instead of raw markup copy.
+- **Resource hygiene**: `IdevsEntityDialog`'s `beforeunload` window listener is now stored and removed in `destroy()` (source registered without cleanup — leak across dialog lifetimes).
+- **Async correctness**: `IdevsEntityDialog`'s close-button handler replaces source's `setInterval(100ms)` polling for `_canClose` with a Promise that resolves when the flag flips. Debug `console.log("Waiting for flag")` removed.
+- **No-console policy**: `console.log/error` debug spam removed from `IdevsOffcanvasPanel`. `LayoutHelper`'s Thai-language `console.error` logs replaced with silent fail.
+- **ARIA additions**: `IdevsOffcanvasPanel` now has `role="dialog"` + `aria-modal="true"` (source had aria-labelledby but no role/aria-modal). `IdevsTabControl` already had complete ARIA in source — preserved.
+- **Type quality**: `any` → `unknown` or proper generics throughout; structural types replace untyped Serenity casts in `IdevsInlineDialog`'s dialog-internals access and `IdevsPanel`'s editor-instance reads.
+- **`saveDialogForm` refactor**: replaced the `new Promise(async ...)` executor with direct `async/await` + a leaf Promise for the save callback (ESLint `no-async-promise-executor` compliance).
+
+### Public barrel changes
+
+```ts
+// src/index.ts after 1.4.0
+export * from './editors'
+export * from './dialogs'    // NEW
+export * from './formatters'
+export * from './panels'     // NEW
+export * from './ui'
+export * from './helpers'    // EXTENDED — adds dialogHelpers, filterHelper, layoutHelper
+export * from './utils'
+export * from './types'
+```
+
 ## 1.2.x → 1.3.0 — batch 3b self-search button editor
 
 ### New editors
