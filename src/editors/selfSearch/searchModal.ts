@@ -412,8 +412,8 @@ export class SearchModalController {
     const thead = document.createElement('thead')
     const row = document.createElement('tr')
 
-    for (const col of this.options.columns) {
       const th = document.createElement('th')
+      th.setAttribute('role', 'columnheader')
       Object.assign(th.style, {
         padding: '0.4rem 0.6rem',
         borderBottom: '2px solid #dee2e6',
