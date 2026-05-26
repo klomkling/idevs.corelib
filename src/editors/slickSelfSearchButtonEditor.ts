@@ -2,9 +2,9 @@ import type { EditorOptions } from '@serenity-is/sleekgrid'
 import type { EditorProps } from '@serenity-is/corelib'
 import { SlickEditorBase } from './slickEditorBase'
 import {
-  IdevsSearchButtonEditor,
-  type IdevsSearchButtonEditorOptions,
-} from './idevsSearchButtonEditor'
+  IdevsSelfSearchButtonEditor,
+  type IdevsSelfSearchButtonEditorOptions,
+} from './idevsSelfSearchButtonEditor'
 
 type DataSelectedDetail = Record<string, unknown> | null | undefined
 
@@ -16,37 +16,39 @@ type SlickNavGrid = {
 }
 
 /**
- * SleekGrid column adapter wrapping IdevsSearchButtonEditor. Listens for the
- * `dataSelected` CustomEvent the parent editor dispatches on selection, then
- * commits the cell and advances to the next column.
+ * SleekGrid column adapter wrapping IdevsSelfSearchButtonEditor. Same shape
+ * as SlickSearchButtonEditor but with the SelfSearch's "only navigate when
+ * event.detail is truthy" guard preserved from the PowerACC source — needed
+ * because SelfSearch dialogs can fire dataSelected with falsy detail in
+ * certain dismiss paths.
  */
-export class SlickSearchButtonEditor<P extends EditorOptions = EditorOptions>
-  extends SlickEditorBase<IdevsSearchButtonEditor, P> {
+export class SlickSelfSearchButtonEditor<P extends EditorOptions = EditorOptions>
+  extends SlickEditorBase<IdevsSelfSearchButtonEditor, P> {
   constructor(props: EditorProps<P>) {
     super(props)
   }
 
-  protected createEditor(props: EditorProps<P>): IdevsSearchButtonEditor {
-    const params = ((props.column as { sourceItem?: { editorParams?: unknown } } | undefined)?.sourceItem?.editorParams ??
-      {}) as IdevsSearchButtonEditorOptions
-    const opts: IdevsSearchButtonEditorOptions = { ...params }
+  protected createEditor(props: EditorProps<P>): IdevsSelfSearchButtonEditor {
+    const params = ((props.column as { sourceItem?: { editorParams?: unknown } } | undefined)
+      ?.sourceItem?.editorParams ?? {}) as IdevsSelfSearchButtonEditorOptions
+    const opts: IdevsSelfSearchButtonEditorOptions = { ...params }
 
     if (!props.container) {
-      throw new Error('SlickSearchButtonEditor requires props.container')
+      throw new Error('SlickSelfSearchButtonEditor requires props.container')
     }
     const wrapper = document.createElement('div')
     props.container.appendChild(wrapper)
 
-    return new IdevsSearchButtonEditor({
+    return new IdevsSelfSearchButtonEditor({
       ...opts,
       element: wrapper,
-    } as unknown as ConstructorParameters<typeof IdevsSearchButtonEditor>[0])
+    } as unknown as ConstructorParameters<typeof IdevsSelfSearchButtonEditor>[0])
   }
 
   protected override appendToContainer(props: EditorProps<P>): void {
     if (!props.container) return
     props.container.appendChild(this.editor.domNode)
-    this.setupDataSelectionHandler(props)
+    this.setupDataSelectionHandler()
   }
 
   protected override getInputElement(): HTMLInputElement | null {
@@ -58,8 +60,8 @@ export class SlickSearchButtonEditor<P extends EditorOptions = EditorOptions>
 
   protected override handleValueChange(): void {
     // Intentionally does NOT call this.editor.set_value(inputElement.value).
-    // The inner IdevsSearchButtonEditor's own input handler already wrote
-    // the canonical (raw) value to its hidden domNode via set_value —
+    // The inner IdevsSelfSearchButtonEditor's own input handler already
+    // wrote the canonical (raw) value to its hidden domNode via set_value —
     // including masked-pattern extraction. Writing the display input's
     // FORMATTED value back through set_value here would overwrite the raw
     // value with the formatted one (e.g., '12345678' → '1234-5678'),
@@ -68,14 +70,11 @@ export class SlickSearchButtonEditor<P extends EditorOptions = EditorOptions>
     super.handleValueChange()
   }
 
-  private setupDataSelectionHandler(_props: EditorProps<P>): void {
-    // The inner IdevsSearchButtonEditor already listens for `dataSelected` on
-    // its own domNode and handles set_value + onDataSelected + subscribers
-    // (single-chokepoint discipline). Because the inner listener was attached
-    // first (during the inner editor's constructor, before this wrapper's
-    // appendToContainer runs), it fires BEFORE this wrapper's listener — so
-    // by the time we commit, the canonical value is already set. This wrapper
-    // is only responsible for grid-side behavior: commit + navigate.
+  private setupDataSelectionHandler(): void {
+    // Inner editor already handles set_value + onDataSelected + subscribers.
+    // We only do grid-side commit + navigate. Source guard: only navigate
+    // when event.detail is truthy (selection actually happened) so that
+    // cancel paths don't move the active cell.
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<DataSelectedDetail>).detail
       if (!detail) return

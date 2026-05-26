@@ -2,9 +2,11 @@ export * from './checkboxButtonEditor'
 export * from './dateMonthEditor'
 export * from './idevsTagEditor'
 export * from './idevsSearchButtonEditor'
+export * from './idevsSelfSearchButtonEditor'
 export * from './idevsNumericTagEditor'
 export * from './slickEditorBase'
 export * from './slickSearchButtonEditor'
+export * from './slickSelfSearchButtonEditor'
 
 // IdevsDateEditor is intentionally NOT re-exported from this barrel.
 // It depends on `flatpickr` (an OPTIONAL peer dependency). Re-exporting
