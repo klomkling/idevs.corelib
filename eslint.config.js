@@ -35,6 +35,8 @@ export default [
         HTMLImageElement: 'readonly',
         HTMLLabelElement: 'readonly',
         HTMLButtonElement: 'readonly',
+        Element: 'readonly',
+        ChildNode: 'readonly',
         HTMLHeadingElement: 'readonly',
         HTMLTableElement: 'readonly',
         HTMLTableSectionElement: 'readonly',
