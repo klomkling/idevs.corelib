@@ -87,6 +87,27 @@ describe('SearchDropdownController — open/close lifecycle', () => {
     controller.destroy()
     expect(() => controller.destroy()).not.toThrow()
   })
+
+  it('destroy clears aria-controls + aria-expanded from the anchor', () => {
+    const { controller, anchor } = mount()
+    // Pre-conditions from constructor wiring.
+    expect(anchor.getAttribute('aria-controls')).toMatch(/idevs-search-dropdown-/)
+    expect(anchor.getAttribute('aria-expanded')).toBe('false')
+
+    controller.destroy()
+
+    // After destroy: stale attrs would point to a non-existent panel.
+    expect(anchor.getAttribute('aria-controls')).toBeNull()
+    expect(anchor.getAttribute('aria-expanded')).toBeNull()
+  })
+
+  it('destroy does NOT clobber aria-controls if a different controller re-bound the anchor', () => {
+    // Defensive guard: only clear when the attribute still matches OUR id.
+    const { controller, anchor } = mount()
+    anchor.setAttribute('aria-controls', 'something-else')
+    controller.destroy()
+    expect(anchor.getAttribute('aria-controls')).toBe('something-else')
+  })
 })
 
 describe('SearchDropdownController — click outside', () => {

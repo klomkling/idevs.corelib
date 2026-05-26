@@ -3,8 +3,13 @@ import type { ResultColumn } from './columnFormatters'
 /**
  * Built-in modal presentation for IdevsSelfSearchButtonEditor. Renders a
  * full-screen overlay with a results grid; supports keyboard navigation
- * (ArrowUp/Down/Enter/Escape), sort, filter, loading/error/empty states,
- * and WAI-ARIA dialog semantics (role="dialog" + aria-modal + aria-labelledby).
+ * (ArrowUp/Down/Enter/Escape), debounced server-side search via
+ * fetchResults, sort, loading/error/empty states, and WAI-ARIA dialog
+ * semantics (role="dialog" + aria-modal + aria-labelledby).
+ *
+ * Note: search is server-driven — the typed query is forwarded to the
+ * caller's fetchResults callback. There is no client-side filter on top
+ * of the returned results (only maxResults truncation + optional sort).
  *
  * Focus behavior: on open, focus moves to the search input; on close (via
  * Escape, click-outside, or selection), focus returns to whatever element
@@ -42,7 +47,7 @@ export type SearchPresentationOptions = {
 
 type SortState = { field: string; direction: 'asc' | 'desc' } | null
 
-type StateKind = 'idle' | 'loading' | 'empty' | 'filtered-empty' | 'error' | 'results'
+type StateKind = 'idle' | 'loading' | 'empty' | 'error' | 'results'
 
 export class SearchModalController {
   private root!: HTMLDivElement
@@ -283,7 +288,10 @@ export class SearchModalController {
     cancelBtn.type = 'button'
     cancelBtn.className = 'btn btn-secondary'
     cancelBtn.textContent = 'Cancel'
-    cancelBtn.addEventListener('click', () => this.handleCancel())
+    // Use bind() so the listener is tracked in cleanups and removed in
+    // destroy() — keeps the controller's "destroy removes all listeners"
+    // contract honest and prevents retaining the closure after teardown.
+    this.bind(cancelBtn, 'click', () => this.handleCancel())
 
     footer.appendChild(cancelBtn)
     this.dialogEl.appendChild(footer)
@@ -364,11 +372,10 @@ export class SearchModalController {
     this.filteredItems = this.sortState ? this.sortItems(filtered, this.sortState) : filtered
     this.focusIndex = -1
     if (this.filteredItems.length === 0) {
-      if (this.items.length === 0) {
-        this.setState('empty', 'No results found.')
-      } else {
-        this.setState('filtered-empty', 'No matches for your filter.')
-      }
+      // Single empty state — no client-side filtering exists, so the only
+      // way to get here is items.length === 0 OR maxResults === 0. Either
+      // way "No results found." is accurate from the user's perspective.
+      this.setState('empty', 'No results found.')
       this.resultsContainer.replaceChildren()
       return
     }

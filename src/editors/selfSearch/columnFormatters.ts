@@ -153,7 +153,16 @@ export function formatNumber(value: unknown, pattern: string): string {
   const decimalMatch = pattern.match(/\.(0+)/)
   const decimals = decimalMatch ? decimalMatch[1].length : 0
 
-  return num.toLocaleString(undefined, {
+  // Use an explicit 'en-US' locale rather than `undefined` (host default).
+  // The PowerACC source used the host locale, which produces different
+  // thousands/decimal separators on consumer machines configured for
+  // other locales (e.g., de-DE would emit '1.234,50' instead of
+  // '1,234.50'). Stable output is more useful than locale-aware output
+  // here — values are stored and forwarded as raw numbers; the formatter
+  // only controls display in the results grid. Consumers needing a
+  // localized variant should supply their own column formatter via
+  // `columnFormatters` rather than the built-in 'number' formatter.
+  return num.toLocaleString('en-US', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   })

@@ -107,6 +107,25 @@ describe('SearchModalController — open/close lifecycle', () => {
     controller.destroy()
     expect(() => controller.destroy()).not.toThrow()
   })
+
+  it('destroy removes the Cancel button click listener (no orphan invocation)', async () => {
+    const { controller, fetchResults, onCancel } = mount()
+    fetchResults.mockResolvedValue([])
+    controller.open()
+    await vi.runAllTimersAsync()
+
+    const cancelBtn = Array.from(document.querySelectorAll<HTMLButtonElement>('.btn-secondary'))
+      .find(b => b.textContent === 'Cancel')
+    expect(cancelBtn).toBeDefined()
+
+    controller.destroy()
+    // Removed from DOM, but if the click listener were still wired to a
+    // retained closure, dispatching would fire onCancel again. Verify it
+    // does NOT after destroy.
+    onCancel.mockClear()
+    cancelBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(onCancel).not.toHaveBeenCalled()
+  })
 })
 
 describe('SearchModalController — search + filter', () => {

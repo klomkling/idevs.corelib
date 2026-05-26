@@ -17,7 +17,7 @@ export type SearchDropdownOptions = SearchPresentationOptions & {
 }
 
 type SortState = { field: string; direction: 'asc' | 'desc' } | null
-type StateKind = 'idle' | 'loading' | 'empty' | 'filtered-empty' | 'error' | 'results'
+type StateKind = 'idle' | 'loading' | 'empty' | 'error' | 'results'
 
 export class SearchDropdownController {
   private panel!: HTMLDivElement
@@ -114,6 +114,16 @@ export class SearchDropdownController {
       }
     }
     this.cleanups = []
+    // Clean up ARIA attributes on the anchor — only when they still match
+    // this controller (defensive in case the editor was re-bound to a
+    // different controller). Without this, the anchor would advertise a
+    // combobox controlling a non-existent panel after destroy.
+    if (this.anchor.getAttribute('aria-controls') === this.id) {
+      this.anchor.removeAttribute('aria-controls')
+    }
+    if (this.anchor.getAttribute('aria-expanded') !== null) {
+      this.anchor.removeAttribute('aria-expanded')
+    }
     this.panel.remove()
   }
 
@@ -275,7 +285,8 @@ export class SearchDropdownController {
     this.filteredItems = this.sortState ? this.sortItems(filtered, this.sortState) : filtered
     this.focusIndex = -1
     if (this.filteredItems.length === 0) {
-      this.setState(this.items.length === 0 ? 'empty' : 'filtered-empty', this.items.length === 0 ? 'No results found.' : 'No matches.')
+      // Single empty state — search is server-driven, no client-side filter.
+      this.setState('empty', 'No results found.')
       this.resultsContainer.replaceChildren()
       return
     }
