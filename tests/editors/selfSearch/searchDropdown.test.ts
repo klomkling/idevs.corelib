@@ -108,6 +108,18 @@ describe('SearchDropdownController — open/close lifecycle', () => {
     controller.destroy()
     expect(anchor.getAttribute('aria-controls')).toBe('something-else')
   })
+
+  it('destroy does NOT clobber aria-expanded when aria-controls no longer matches', () => {
+    // Round-7 fix: aria-expanded is gated on the SAME id-match check, not
+    // stripped independently. If a newer controller took over the anchor,
+    // our destroy must not strip the new controller's aria-expanded state.
+    const { controller, anchor } = mount()
+    anchor.setAttribute('aria-controls', 'other-controller-id')
+    anchor.setAttribute('aria-expanded', 'true') // set by the newer controller
+    controller.destroy()
+    expect(anchor.getAttribute('aria-controls')).toBe('other-controller-id')
+    expect(anchor.getAttribute('aria-expanded')).toBe('true')
+  })
 })
 
 describe('SearchDropdownController — click outside', () => {

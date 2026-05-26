@@ -137,12 +137,39 @@ export function formatCustomerCode(value: unknown, pattern: string): string {
 export function formatSerenityDate(value: unknown, pattern: string): string {
   if (value === null || value === undefined || value === '') return ''
   try {
-    const date = new Date(value as string | number | Date)
-    if (Number.isNaN(date.getTime())) return String(value)
+    const date = parseToLocalDate(value)
+    if (date == null || Number.isNaN(date.getTime())) return String(value)
     return formatDate(date, pattern)
   } catch {
     return String(value)
   }
+}
+
+/**
+ * Parse a value to a Date in LOCAL time semantics. Date objects pass
+ * through; numbers go straight to `new Date(ms)`. Strings get an ISO
+ * date-only special case: `YYYY-MM-DD` is parsed via the local-time
+ * constructor `new Date(y, m-1, d)` so it doesn't shift ±1 day when
+ * the formatter renders it in the host timezone (the default
+ * `new Date('YYYY-MM-DD')` parses as UTC midnight, which becomes the
+ * previous day in any timezone west of UTC).
+ *
+ * Other string formats (full ISO datetime, RFC 2822, etc.) keep the
+ * default `new Date(string)` parsing — those typically carry an
+ * explicit offset and behave correctly.
+ */
+function parseToLocalDate(value: unknown): Date | null {
+  if (value instanceof Date) return value
+  if (typeof value === 'number') return new Date(value)
+  if (typeof value === 'string') {
+    const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    if (dateOnly) {
+      const [, y, mo, d] = dateOnly
+      return new Date(Number(y), Number(mo) - 1, Number(d))
+    }
+    return new Date(value)
+  }
+  return null
 }
 
 export function formatNumber(value: unknown, pattern: string): string {

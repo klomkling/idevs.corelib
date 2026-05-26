@@ -114,14 +114,15 @@ export class SearchDropdownController {
       }
     }
     this.cleanups = []
-    // Clean up ARIA attributes on the anchor — only when they still match
-    // this controller (defensive in case the editor was re-bound to a
-    // different controller). Without this, the anchor would advertise a
-    // combobox controlling a non-existent panel after destroy.
+    // Clean up ARIA attributes on the anchor — only when aria-controls
+    // still points to THIS controller. The id-match check is the proof of
+    // ownership; without it, a destroyed controller could strip ARIA state
+    // set by a newer controller that has since taken over the same anchor.
+    // aria-expanded is gated on the SAME check (not stripped independently)
+    // because we only have evidence of ownership when aria-controls
+    // identifies us.
     if (this.anchor.getAttribute('aria-controls') === this.id) {
       this.anchor.removeAttribute('aria-controls')
-    }
-    if (this.anchor.getAttribute('aria-expanded') !== null) {
       this.anchor.removeAttribute('aria-expanded')
     }
     this.panel.remove()

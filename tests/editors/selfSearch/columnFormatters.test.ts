@@ -142,6 +142,17 @@ describe('formatSerenityDate', () => {
   it('returns the raw value for unparseable dates', () => {
     expect(formatSerenityDate('not a date', 'yyyy')).toBe('not a date')
   })
+
+  it('parses YYYY-MM-DD strings as LOCAL dates (no UTC shift)', () => {
+    // Regression: previously `new Date('2026-05-25')` parsed as UTC
+    // midnight, which became 2026-05-24 in any timezone west of UTC,
+    // and the formatted output would show the wrong day. With the fix,
+    // YYYY-MM-DD strings construct via `new Date(y, m-1, d)` so the
+    // formatted day matches the input regardless of host TZ.
+    expect(formatSerenityDate('2026-05-25', 'yyyy-MM-dd')).toBe('2026-05-25')
+    expect(formatSerenityDate('2026-01-01', 'yyyy-MM-dd')).toBe('2026-01-01')
+    expect(formatSerenityDate('2026-12-31', 'yyyy-MM-dd')).toBe('2026-12-31')
+  })
 })
 
 describe('formatNumber', () => {
