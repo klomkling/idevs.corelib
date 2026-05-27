@@ -9,8 +9,9 @@ import { Fluent, Toolbar } from '@serenity-is/corelib'
  *   // PowerACC:
  *   element.createLayout(3, 'col')
  *
- *   // idevs.corelib:
- *   import { createLayout } from '@idevs/corelib/helpers'
+ *   // idevs.corelib (helpers are re-exported from the root barrel; there is
+ *   // no separate '@idevs/corelib/helpers' subpath in package.json#exports):
+ *   import { createLayout } from '@idevs/corelib'
  *   createLayout(element, 3, 'col')
  *
  * Behavioral parity is preserved otherwise.

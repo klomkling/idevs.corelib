@@ -232,12 +232,13 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
       confirmDialog(
         this.confirmMessage,
         () => {
-          // User chose "yes, save". Save runs; on success we close the
-          // dialog. Without the success callback driving dialogClose,
-          // the user's action ("save and close") would degrade into a
-          // bare save while the dialog stays open.
-          this._userConfirmedClose = true
+          // User chose "yes, save". Save runs; ONLY on success do we
+          // set the confirmed flag and close the dialog. If save fails
+          // (validation, service error) the success callback is never
+          // invoked — the dialog stays open with the unsaved-changes
+          // state intact, so the next close attempt re-prompts.
           this.save(() => {
+            this._userConfirmedClose = true
             this.dialogClose(result ?? 'save-and-close')
           })
         },
@@ -414,10 +415,12 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
       confirmDialog(
         this.confirmMessage,
         () => {
-          // Save AND close — pass dialogClose to save() so this is a real
-          // save-and-close, not a bare save that leaves the dialog open.
-          this._userConfirmedClose = true
+          // Save AND close — set the confirmed flag and close ONLY after
+          // save succeeds. A failed save (validation, service error)
+          // leaves _userConfirmedClose false, so the next close attempt
+          // re-prompts instead of silently discarding the dirty edits.
           this.save(() => {
+            this._userConfirmedClose = true
             this.dialogClose('save-and-close')
           })
         },
