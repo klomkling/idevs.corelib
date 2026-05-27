@@ -48,9 +48,11 @@ All in `src/panels/`, exported from the public barrel.
 - `ShippingMarkEntityDialog`, `ShippingMarkPanel` — PowerACC's shipping-mark module.
 - The PowerACC-domain types from `Dialogs.ts`: `NameValueCollection`, `RequestApprovalDetailParameter`, `IvnRequestApprovalDetailParameter`, `BookingRequestApprovalDetailParameter`, `RequestApprovalParameter`, `RequestOnedateReportParameter`, `InventoryRequestApprovalParameter`, `BookingRequestApprovalParameter`, `RequestPrintShippingMarkParameter`. These reference `@/ServerTypes/Sales/ApprovalRequestRow` and similar — domain code stays in PowerACC.
 
-### Breaking API renames
+### API additions (PascalCase setters preserved as compatibility shims)
 
-- PowerACC's PascalCase assignment-style setters (`dialog.FilterKeys = ...`, `dialog.CriteriaKeys = ...`, `dialog.DialogSize = ...`) are replaced with camelCase methods on dialogs: `setFilterKeys()`, `setCriteriaKeys()`, `setDialogSize()`, `setDialogType()`, `setDialogPermission()`, `setPreItems()`.
+- Dialogs now expose **camelCase methods** as the preferred API: `setFilterKeys()`, `setCriteriaKeys()`, `setSearchValue()`, `setDialogSize()`, `setDialogType()`, `setDialogPermission()`, `setPreItems()`.
+- The PowerACC **PascalCase assignment setters** (`dialog.FilterKeys = ...`, `dialog.CriteriaKeys = ...`, `dialog.SearchValue = ...`, `dialog.DialogSize = ...`, `dialog.DialogType = ...`, `dialog.DialogPermission = ...`, `dialog.preItems = ...`) **are preserved as compatibility shims** that route to the camelCase methods. Existing callers (notably `IdevsSearchButtonEditor.openDialog`, which still writes by assignment per the PowerACC dialog interface contract) continue to work unchanged. Subclass overrides of the camelCase methods take effect through either entry point.
+- New consumer code should prefer the camelCase methods. The PascalCase shims are not deprecated in this release but may be in a future major bump — track via the project changelog.
 - `IdevsInlineDialog.IdevsCustomButton.style` and `IdevsInlineDialog.IdevsEmptyField.style` no longer accept a raw CSS-string variant (CSS-injection vector) — use `Partial<CSSStyleDeclaration>` only.
 - `CsiPanel.PanelTitle` / `CsiPanel.Fields` getters/setters → `IdevsPanel.title` + `IdevsPanel.setTitle()` + `IdevsPanel.getFields()` + `IdevsPanel.setFields()`.
 - Clone-mode marker `__csiCloneMode` → `__idevsCloneMode`. Consumers that inspect this marker directly need to migrate (rare — typically only `isCloneMode()` users).

@@ -147,8 +147,13 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
   }
 
   protected override onDialogOpen(): void {
-    this.localizerButton?.hide()
-    this.undeleteButton?.hide()
+    // Honor the public alwaysDisableLocalization / alwaysDisableUndelete
+    // flags — defaults stay `true` to preserve the source's hide-by-default
+    // behavior, but consumers who flip either to false get the standard
+    // Serenity button back. Previously these flags were settable but
+    // ignored, presenting a misleading public API.
+    if (this._alwaysDisableLocalization) this.localizerButton?.hide()
+    if (this._alwaysDisableUndelete) this.undeleteButton?.hide()
     this.cloneButton?.toggle(this.isEditMode())
 
     this.initCloseButtonHandler()
@@ -409,6 +414,11 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
   private async onCloseButtonClick(e: MouseEvent): Promise<void> {
     e.preventDefault()
     await this.waitForCanClose()
+    // waitForCanClose() resolves on destroy too (so the Promise doesn't
+    // leak the interval). Re-check the destroyed flag here — without this
+    // guard, hasUnsavedChanges / dialogClose would run against a torn-down
+    // dialog and throw on detached DOM.
+    if (this._isDestroyed) return
 
     if (this.hasUnsavedChanges()) {
       setInactiveModal(this.domNode, true)

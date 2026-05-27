@@ -66,6 +66,10 @@ export class IdevsInlineDialog<TEntity = Record<string, unknown>> extends Widget
   IdevsInlineDialogOptions<TEntity>
 > {
   private dialog!: DialogInternals<TEntity>
+  /** Tracked deferred-init timers (emptyFields + customButtons) so destroy
+   *  can cancel them before they fire against a torn-down dialog. */
+  private pendingInitTimers: Array<ReturnType<typeof setTimeout>> = []
+  private isDestroyed = false
 
   static override createDefaultElement(): HTMLElement {
     return Fluent('div')
@@ -79,6 +83,12 @@ export class IdevsInlineDialog<TEntity = Record<string, unknown>> extends Widget
   }
 
   override destroy(): void {
+    this.isDestroyed = true
+    // Cancel any pending init timers — emptyFields/customButtons mutate the
+    // embedded dialog's DOM, which would throw or mis-render against a
+    // destroyed dialog instance.
+    for (const id of this.pendingInitTimers) clearTimeout(id)
+    this.pendingInitTimers = []
     // Tear down the embedded dialog before our own destroy chain — its
     // form change listeners hold references back through `this`, so
     // disposing it first ensures no listener fires during teardown.
@@ -90,6 +100,17 @@ export class IdevsInlineDialog<TEntity = Record<string, unknown>> extends Widget
       }
     }
     super.destroy()
+  }
+
+  /** Schedule a deferred init step with destroy-safe cancellation. */
+  private scheduleInit(cb: () => void, delay: number): void {
+    if (this.isDestroyed) return
+    const id = setTimeout(() => {
+      this.pendingInitTimers = this.pendingInitTimers.filter(t => t !== id)
+      if (this.isDestroyed) return
+      cb()
+    }, delay)
+    this.pendingInitTimers.push(id)
   }
 
   public async callPageCallback<K extends keyof IdevsInlineDialogCallbacks<TEntity>>(
@@ -161,10 +182,10 @@ export class IdevsInlineDialog<TEntity = Record<string, unknown>> extends Widget
     void this.loadNew()
 
     if (this.options.emptyFields && this.options.emptyFields.length > 0) {
-      setTimeout(() => this.addEmptyFields(), 100)
+      this.scheduleInit(() => this.addEmptyFields(), 100)
     }
     if (this.options.customButtons && this.options.customButtons.length > 0) {
-      setTimeout(() => this.addCustomButtons(), 100)
+      this.scheduleInit(() => this.addCustomButtons(), 100)
     }
   }
 

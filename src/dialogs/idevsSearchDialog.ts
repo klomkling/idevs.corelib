@@ -39,6 +39,9 @@ export abstract class IdevsSearchDialog<P = unknown> extends IdevsPropertyDialog
   private _dialogType?: string
   private _dialogPermission?: string
   private _preItems?: unknown[]
+  /** Tracked initToolbar setTimeout so destroy can cancel it. */
+  private _initToolbarTimer?: ReturnType<typeof setTimeout>
+  private _isSearchDialogDestroyed = false
 
   // === Public getters / setters (camelCase methods preferred) ===
 
@@ -123,7 +126,15 @@ export abstract class IdevsSearchDialog<P = unknown> extends IdevsPropertyDialog
   }
 
   initToolbar(): void {
-    setTimeout(() => {
+    // Cancel any prior pending init (defensive — initToolbar should only
+    // be called once per dialog open, but storing the handle anyway lets
+    // destroy() cancel cleanly).
+    if (this._initToolbarTimer !== undefined) clearTimeout(this._initToolbarTimer)
+    this._initToolbarTimer = setTimeout(() => {
+      this._initToolbarTimer = undefined
+      // Guard against open-then-close races: don't mutate DOM after teardown.
+      if (this._isSearchDialogDestroyed) return
+
       this.toolbar = new Toolbar({
         class: 's-SearchDialogToolbar',
         buttons: this.getToolbarButtons(),
@@ -135,6 +146,15 @@ export abstract class IdevsSearchDialog<P = unknown> extends IdevsPropertyDialog
       const rendered = this.toolbar.render()
       while (rendered.firstChild) tb.appendChild(rendered.firstChild)
     }, 100)
+  }
+
+  override destroy(): void {
+    this._isSearchDialogDestroyed = true
+    if (this._initToolbarTimer !== undefined) {
+      clearTimeout(this._initToolbarTimer)
+      this._initToolbarTimer = undefined
+    }
+    super.destroy()
   }
 
   protected getToolbarButtons(): ToolButton[] {

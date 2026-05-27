@@ -124,12 +124,16 @@ export class IdevsOffcanvasPanel extends Widget<IdevsOffcanvasPanelOptions> {
     this.isLoaded = true
 
     // Hook into Bootstrap's offcanvas hidden event (fires on Esc, backdrop
-    // click, or close-button click) to drop the body class. Without this
-    // the `with-offcanvas-panel` style would persist after dismissal.
+    // click, or close-button click) and route through full teardown.
+    // Previously this handler only removed the body class — the embedded
+    // dialog, jQuery data-change listener, and pending injectDialogIntoPanel
+    // timers would all leak when the user dismissed via any of those
+    // non-data-change paths. teardown() is idempotent so the followup
+    // ondatachange path (when present) is harmless.
     this.overlayDiv.addEventListener(
       'hidden.bs.offcanvas',
       () => {
-        document.body.classList.remove(IdevsOffcanvasPanel.BODY_OPEN_CLASS)
+        this.teardown()
       },
       { once: true },
     )
