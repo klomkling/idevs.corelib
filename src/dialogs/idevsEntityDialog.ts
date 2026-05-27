@@ -283,7 +283,13 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
     const current = currentEntity as Record<string, unknown>
     const initial = initialEntity as Record<string, unknown>
 
-    return Object.keys(current).every(key => {
+    // Compare the UNION of keys, not just the current entity's. Without
+    // the symmetric check, a key that existed in `initial` but is missing
+    // from `current` (deletion / clear-to-undefined) would be skipped and
+    // hasUnsavedChanges would silently miss the change.
+    const allKeys = new Set<string>([...Object.keys(current), ...Object.keys(initial)])
+
+    for (const key of allKeys) {
       const currentValue = current[key]
       const initialValue = initial[key]
 
@@ -307,8 +313,11 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
         initialValue !== null &&
         JSON.stringify(currentValue) === JSON.stringify(initialValue)
 
-      return currentValue === initialValue || bothNaN || bothDates || bothNullish || bothObjects
-    })
+      const equal =
+        currentValue === initialValue || bothNaN || bothDates || bothNullish || bothObjects
+      if (!equal) return false
+    }
+    return true
   }
 
   private handleBeforeUnload(event: BeforeUnloadEvent): void {

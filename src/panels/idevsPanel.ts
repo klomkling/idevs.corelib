@@ -159,6 +159,11 @@ export class IdevsPanel<P extends IdevsPanelOptions = IdevsPanelOptions> extends
 
   /** Render the registered fields into the panel container. */
   protected async renderPanel(): Promise<Fluent> {
+    // Destroy any editor instances from a prior render before emptying the
+    // DOM — otherwise we'd orphan their event handlers and any internal
+    // state, AND a stale getEditor() / setFieldValue() call could still
+    // mutate the dead editor. Reset the registry too.
+    this.destroyEditorInstances()
     this.panelContainer.empty()
     this.fields.forEach(field => {
       field.container = this.panelContainer
@@ -166,6 +171,27 @@ export class IdevsPanel<P extends IdevsPanelOptions = IdevsPanelOptions> extends
       this.instantiateEditor(field)
     })
     return this.panelContainer
+  }
+
+  private destroyEditorInstances(): void {
+    for (const key of Object.keys(this.editorInstances)) {
+      try {
+        this.editorInstances[key].destroy()
+      } catch {
+        /* swallow teardown errors */
+      }
+    }
+    this.editorInstances = {}
+    // Also clear the editorInstance back-reference on each field so dead
+    // pointers aren't held in user-owned field configs.
+    this.fields.forEach(f => {
+      f.editorInstance = undefined
+    })
+  }
+
+  override destroy(): void {
+    this.destroyEditorInstances()
+    super.destroy()
   }
 
   private addFieldToContainer(field: IdevsPanelFieldOptions): Fluent {
