@@ -89,6 +89,68 @@ describe('IdevsTabControl — construction + ARIA', () => {
   })
 })
 
+describe('IdevsTabControl — keyboard nav (WAI-ARIA tabs pattern)', () => {
+  it('initial tab has tabindex=0, others -1 (roving tabindex)', () => {
+    const { element } = mountTabs([
+      { id: 'a', title: 'Alpha', createWidget: makeStubTabFactory() },
+      { id: 'b', title: 'Beta', createWidget: makeStubTabFactory() },
+      { id: 'c', title: 'Gamma', createWidget: makeStubTabFactory() },
+    ])
+    const tabs = element.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+    expect(tabs[0].getAttribute('tabindex')).toBe('0')
+    expect(tabs[1].getAttribute('tabindex')).toBe('-1')
+    expect(tabs[2].getAttribute('tabindex')).toBe('-1')
+  })
+
+  it('ArrowRight on a focused tab clicks the next tab', () => {
+    const { element } = mountTabs([
+      { id: 'a', title: 'Alpha', createWidget: makeStubTabFactory() },
+      { id: 'b', title: 'Beta', createWidget: makeStubTabFactory() },
+    ])
+    const tabs = element.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+    tabs[0].focus()
+    const clickSpy = vi.fn()
+    tabs[1].addEventListener('click', clickSpy)
+    const tablist = element.querySelector('[role="tablist"]')!
+    tablist.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    expect(clickSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('ArrowLeft wraps from first tab to last', () => {
+    const { element } = mountTabs([
+      { id: 'a', title: 'Alpha', createWidget: makeStubTabFactory() },
+      { id: 'b', title: 'Beta', createWidget: makeStubTabFactory() },
+    ])
+    const tabs = element.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+    tabs[0].focus()
+    const clickSpy = vi.fn()
+    tabs[1].addEventListener('click', clickSpy)
+    const tablist = element.querySelector('[role="tablist"]')!
+    tablist.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
+    expect(clickSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('Home + End move to first and last', () => {
+    const { element } = mountTabs([
+      { id: 'a', title: 'A', createWidget: makeStubTabFactory() },
+      { id: 'b', title: 'B', createWidget: makeStubTabFactory() },
+      { id: 'c', title: 'C', createWidget: makeStubTabFactory() },
+    ])
+    const tabs = element.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+    tabs[1].focus()
+    const clickFirst = vi.fn()
+    const clickLast = vi.fn()
+    tabs[0].addEventListener('click', clickFirst)
+    tabs[2].addEventListener('click', clickLast)
+    const tablist = element.querySelector('[role="tablist"]')!
+    tablist.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
+    expect(clickFirst).toHaveBeenCalledTimes(1)
+    tabs[1].focus()
+    tablist.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }))
+    expect(clickLast).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('IdevsTabControl — destroy (regression)', () => {
   it('destroy clears child widgets and is idempotent', () => {
     const innerWidget = {

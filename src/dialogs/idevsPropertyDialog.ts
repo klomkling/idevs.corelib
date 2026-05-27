@@ -31,10 +31,26 @@ export class IdevsPropertyDialog<P = unknown> extends PropertyDialog<unknown, P>
     }, 0)
   }
 
-  // Subclass override hooks (no-ops by default).
-  protected setFilterKeys(_filters: Record<string, unknown>): void {}
-  protected setCriteriaKeys(_criteria: unknown[]): void {}
-  protected setSearchValue(_value: unknown): void {}
+  // Public hooks — subclasses override the implementation; external callers
+  // (notably IdevsSearchButtonEditor's dialog instantiation path) invoke
+  // these to propagate filter/criteria/search context into the dialog.
+  setFilterKeys(_filters: Record<string, unknown>): void {}
+  setCriteriaKeys(_criteria: unknown[]): void {}
+  setSearchValue(_value: unknown): void {}
+
+  // PascalCase property setters — kept as compatibility shims for callers
+  // (e.g., IdevsSearchButtonEditor.openDialog) that still write
+  // `dialog.FilterKeys = {...}` per the PowerACC dialog interface contract.
+  // Route to the camelCase methods so subclass overrides take effect.
+  set FilterKeys(filters: Record<string, unknown>) {
+    this.setFilterKeys(filters)
+  }
+  set CriteriaKeys(criteria: unknown[]) {
+    this.setCriteriaKeys(criteria)
+  }
+  set SearchValue(value: unknown) {
+    this.setSearchValue(value)
+  }
 
   // Selection callback wiring.
   set onDataSelected(callback: (data: unknown) => void) {

@@ -32,6 +32,16 @@ export class IdevsTabControl<
   private widgets: Record<string, Widget<unknown>> = {}
   private nav?: Fluent
   private resizeTimer?: ReturnType<typeof setTimeout>
+  /**
+   * Delegated bootstrap shown.bs.tab handler — stored so destroy() can
+   * pass the function reference to .off() and scope removal to THIS
+   * component (not strip listeners attached by consumers).
+   */
+  private shownTabHandler?: () => void
+  /** Tab buttons in tablist order for keyboard nav (ArrowLeft/Right/Home/End). */
+  private tabButtons: HTMLButtonElement[] = []
+  private tablistKeydownHandler?: (e: KeyboardEvent) => void
+  private tablistElement?: HTMLUListElement
 
   static override createDefaultElement(): HTMLElement {
     return Fluent('div')
@@ -59,6 +69,7 @@ export class IdevsTabControl<
       .attr('role', 'tablist')
       .appendTo(this.element)
     this.nav = nav
+    this.tablistElement = nav[0] as HTMLUListElement
 
     const tabContainer = Fluent('div')
       .class(['h-100', 'overflow-auto'])
@@ -82,6 +93,10 @@ export class IdevsTabControl<
       const tabLinkClasses: string[] = ['nav-link']
       if (isActive) tabLinkClasses.push('active')
 
+      // tabindex per WAI-ARIA tabs pattern: active tab gets 0, inactive
+      // tabs get -1 — Tab key reaches the tablist once, then arrow keys
+      // navigate within. Without this, every tab is independently
+      // tab-reachable, which is not the recommended ARIA flow.
       const tabLink = Fluent('button')
         .class(tabLinkClasses)
         .attr('id', tabId)
@@ -91,7 +106,9 @@ export class IdevsTabControl<
         .attr('role', 'tab')
         .attr('aria-controls', paneId)
         .attr('aria-selected', isActive ? 'true' : 'false')
+        .attr('tabindex', isActive ? '0' : '-1')
         .text(tabInfo.title)
+      this.tabButtons.push(tabLink[0] as HTMLButtonElement)
 
       Fluent('li')
         .class('nav-item')
@@ -120,7 +137,11 @@ export class IdevsTabControl<
       })
     })
 
-    nav.on('shown.bs.tab', 'button[data-bs-toggle="tab"]', () => {
+    // Store the delegated handler reference so destroy() can pass it to
+    // .off() — without the reference, .off() would strip every
+    // shown.bs.tab listener on the nav, including ones consumers attached
+    // after construction.
+    this.shownTabHandler = () => {
       // Resize any SlickGrid contained inside a freshly-shown tab — without
       // this, the grid canvas measures incorrectly while the pane was hidden.
       // Timer handle stored so destroy() can cancel a pending resize.
@@ -134,7 +155,60 @@ export class IdevsTabControl<
           widget?.slickGrid?.resizeCanvas?.()
         }
       }, 10)
-    })
+
+      // Sync tabindex + aria-selected after Bootstrap's class flip so the
+      // WAI-ARIA roving-tabindex contract holds across user interactions.
+      this.syncTabIndices()
+    }
+    nav.on('shown.bs.tab', 'button[data-bs-toggle="tab"]', this.shownTabHandler)
+
+    // Keyboard nav for the tablist (WAI-ARIA tabs pattern):
+    //   ArrowLeft / ArrowRight — move focus + activate prev/next tab
+    //   Home / End             — move to first / last tab
+    // Stored on instance for destroy-time removal.
+    this.tablistKeydownHandler = (e: KeyboardEvent) => this.handleTablistKeydown(e)
+    this.tablistElement!.addEventListener('keydown', this.tablistKeydownHandler)
+  }
+
+  /** Roving-tabindex sync: active tab is 0, others -1. */
+  private syncTabIndices(): void {
+    for (const btn of this.tabButtons) {
+      const active = btn.classList.contains('active')
+      btn.setAttribute('tabindex', active ? '0' : '-1')
+      btn.setAttribute('aria-selected', active ? 'true' : 'false')
+    }
+  }
+
+  /** WAI-ARIA tablist keyboard pattern (Arrow keys + Home/End). */
+  private handleTablistKeydown(event: KeyboardEvent): void {
+    if (this.tabButtons.length === 0) return
+
+    const currentIndex = this.tabButtons.findIndex(b => b === document.activeElement)
+    let nextIndex = -1
+
+    switch (event.key) {
+      case 'ArrowLeft':
+        nextIndex = currentIndex <= 0 ? this.tabButtons.length - 1 : currentIndex - 1
+        break
+      case 'ArrowRight':
+        nextIndex = currentIndex === this.tabButtons.length - 1 ? 0 : currentIndex + 1
+        break
+      case 'Home':
+        nextIndex = 0
+        break
+      case 'End':
+        nextIndex = this.tabButtons.length - 1
+        break
+      default:
+        return
+    }
+
+    event.preventDefault()
+    const next = this.tabButtons[nextIndex]
+    if (!next) return
+    // Activate via Bootstrap's data-bs-toggle path (click triggers shown.bs.tab).
+    next.focus()
+    next.click()
   }
 
   override destroy(): void {
@@ -142,15 +216,26 @@ export class IdevsTabControl<
       clearTimeout(this.resizeTimer)
       this.resizeTimer = undefined
     }
-    // Detach the delegated shown.bs.tab handler so it can't fire after
-    // teardown (Bootstrap retains the binding otherwise).
-    if (this.nav) {
+    // Detach the delegated shown.bs.tab handler — scoped to OUR handler
+    // function so consumer-attached listeners are preserved.
+    if (this.nav && this.shownTabHandler) {
       try {
-        this.nav.off('shown.bs.tab')
+        this.nav.off('shown.bs.tab', this.shownTabHandler as unknown as EventListener)
       } catch {
         /* nav already detached */
       }
+      this.shownTabHandler = undefined
     }
+    // Detach tablist keyboard handler.
+    if (this.tablistElement && this.tablistKeydownHandler) {
+      try {
+        this.tablistElement.removeEventListener('keydown', this.tablistKeydownHandler)
+      } catch {
+        /* element already detached */
+      }
+      this.tablistKeydownHandler = undefined
+    }
+    this.tabButtons = []
     // Destroy owned tab widgets first — they may hold references back
     // through this controller.
     for (const id in this.widgets) {

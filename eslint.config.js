@@ -44,6 +44,7 @@ export default [
         HTMLTableSectionElement: 'readonly',
         HTMLTableRowElement: 'readonly',
         HTMLTableCellElement: 'readonly',
+        HTMLUListElement: 'readonly',
         HTMLSelectElement: 'readonly',
         HTMLTextAreaElement: 'readonly',
         HTMLSpanElement: 'readonly',

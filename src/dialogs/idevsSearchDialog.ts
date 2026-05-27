@@ -75,20 +75,23 @@ export abstract class IdevsSearchDialog<P = unknown> extends IdevsPropertyDialog
   }
 
   // === Override hooks from IdevsPropertyDialog: forward to the grid ===
+  // Public to match the parent's public hook signature (PropertyDialog's
+  // setters are public so external callers — like the editor's dialog
+  // instantiation path — can pass filter/criteria/search context in).
 
-  protected override setFilterKeys(filters: Record<string, unknown>): void {
+  override setFilterKeys(filters: Record<string, unknown>): void {
     const grid = this.getGrid()
     if (grid) grid.FilterKeys = filters
     else super.setFilterKeys(filters)
   }
 
-  protected override setCriteriaKeys(criteria: unknown[]): void {
+  override setCriteriaKeys(criteria: unknown[]): void {
     const grid = this.getGrid()
     if (grid) grid.CriteriaKeys = criteria
     else super.setCriteriaKeys(criteria)
   }
 
-  protected override setSearchValue(value: unknown): void {
+  override setSearchValue(value: unknown): void {
     const grid = this.getGrid()
     if (grid) grid.SearchValue = value
     else super.setSearchValue(value)

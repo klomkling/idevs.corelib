@@ -6,6 +6,7 @@ import {
   type SaveResponse,
   type ToolButton,
   tryFirst,
+  type WidgetProps,
 } from '@serenity-is/corelib'
 import { setActiveModal, setInactiveModal } from '../helpers/dialogHelpers'
 
@@ -103,8 +104,12 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
     }
   }
 
-  constructor() {
-    super()
+  constructor(props?: WidgetProps<P>) {
+    // Forward props to Serenity's EntityDialog so caller-supplied options
+    // (element, dialog-specific settings) take effect. The PowerACC source
+    // dropped this argument, ignoring any consumer options — a real bug
+    // that breaks any non-default instantiation.
+    super(props as WidgetProps<P>)
     const handler = this.handleBeforeUnload.bind(this)
     this._beforeUnloadHandler = handler
     window.addEventListener('beforeunload', handler)
@@ -159,12 +164,22 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
   protected override updateInterface(): void {
     super.updateInterface()
 
-    // Delay the snapshot until the form has finished its async loading.
-    // The PowerACC source used a hard 2-second timeout — fragile but load
-    // timings vary, so we preserve it as a documented constraint.
-    // Timer handle stored so destroy() can cancel it (otherwise the
-    // callback would run against a torn-down dialog and throw).
+    // Take an IMMEDIATE snapshot so hasUnsavedChanges always has a baseline
+    // to compare against. Without this, the 2-second delay opened a window
+    // where the user could type AND close (Esc/backdrop) without seeing
+    // a confirm prompt — Esc/backdrop paths invoke hasUnsavedChanges
+    // directly without waiting on _canClose like the custom close button.
+    this.initialEntity = this.getSaveEntity() as TItem
     this._canClose = false
+
+    // Schedule a re-snapshot at +2s to cover async load paths that
+    // populate the form after updateInterface returns. The re-snapshot
+    // overwrites the immediate one — IF the user typed during the first
+    // 2 seconds, their edits become part of the new baseline (this is a
+    // known limitation; consumers needing dirty-tracking on async forms
+    // should override updateInterface and snapshot when their load
+    // promise resolves).
+    // Timer handle stored so destroy() can cancel it.
     if (this._initialSnapshotTimer !== undefined) {
       clearTimeout(this._initialSnapshotTimer)
     }
@@ -252,11 +267,9 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
   }
 
   public hasUnsavedChanges(): boolean {
-    // Treat the pre-snapshot window (initialEntity not yet populated, e.g.,
-    // immediately after open or during the 2-second loadEntity delay) as
-    // "no changes". Without this guard, beforeunload prompts and
-    // confirm-on-close dialogs fire spuriously the moment the user opens
-    // the dialog. Real edits never start before the snapshot exists.
+    // initialEntity is populated synchronously in updateInterface, so a
+    // null value here means hasUnsavedChanges was called before the
+    // dialog finished mounting — treat as "no changes" defensively.
     if (this.initialEntity == null) return false
     const currentEntity = this.getSaveEntity()
     return !this.areEntitiesEqual(currentEntity, this.initialEntity)
@@ -322,12 +335,20 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
     // _canClose + hasUnsavedChanges. Deferred so we run after Serenity
     // mounts the modal header.
     setTimeout(() => {
+      if (this._isDestroyed) return
+
       let closeButton = this.element.parent().findFirst('.btn-close')
       if (!closeButton[0]) closeButton = this.element.parent().findFirst('.panel-titlebar-close')
 
       closeButton.style(css => {
         css.display = 'none'
       })
+
+      // Remove any previously-injected .btn-close-x from prior opens of
+      // this dialog instance — onDialogOpen runs every open, so without
+      // this guard we'd stack a new button + handler on every reopen.
+      const existing = this.element.parent().findFirst('.btn-close-x')
+      if (existing[0]) existing.remove()
 
       const btn = document.createElement('button')
       btn.setAttribute('type', 'button')

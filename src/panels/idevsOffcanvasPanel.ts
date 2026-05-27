@@ -109,7 +109,9 @@ export class IdevsOffcanvasPanel extends Widget<IdevsOffcanvasPanelOptions> {
   }
 
   public load(id?: string | number): void {
-    if (id) {
+    // Explicit nullish check — `if (id)` would skip valid falsy ids like 0
+    // or '' (numeric 0 is a legitimate primary key in many systems).
+    if (id !== undefined && id !== null) {
       // The source passes two no-op callbacks for success/error — preserve.
       this.dlg.loadById(
         id as never,
