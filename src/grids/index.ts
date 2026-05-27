@@ -1,4 +1,5 @@
 export * from './idevsEntityGrid'
+export * from './idevsGridEditController'
 export * from './idevsSearchGrid'
 
 // IdevsSelectableEntityGrid is intentionally NOT re-exported from this
