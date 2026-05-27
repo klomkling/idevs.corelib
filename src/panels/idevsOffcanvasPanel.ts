@@ -1,4 +1,10 @@
-import { Decorators, type EntityDialog, Widget, type WidgetProps } from '@serenity-is/corelib'
+import {
+  Decorators,
+  type EntityDialog,
+  notifyError,
+  Widget,
+  type WidgetProps,
+} from '@serenity-is/corelib'
 
 /**
  * Bootstrap offcanvas slide-out panel that hosts an EntityDialog. The dialog
@@ -112,11 +118,24 @@ export class IdevsOffcanvasPanel extends Widget<IdevsOffcanvasPanelOptions> {
     // Explicit nullish check — `if (id)` would skip valid falsy ids like 0
     // or '' (numeric 0 is a legitimate primary key in many systems).
     if (id !== undefined && id !== null) {
-      // The source passes two no-op callbacks for success/error — preserve.
       this.dlg.loadById(
         id as never,
-        () => {},
-        () => {},
+        () => {
+          // Success: no-op (the dialog will render its loaded entity).
+        },
+        () => {
+          // Source's port passed `() => {}` for error — preserving that
+          // hid every load failure (404 / 500 / deleted record / auth)
+          // and left users staring at a blank offcanvas. Surface a
+          // user-visible error and tear down so the panel doesn't get
+          // stuck half-open. Serenity's typed signature is `() => void`
+          // (no payload); the dialog framework surfaces its own toast
+          // for the underlying service error — this notification
+          // confirms to the user that the offcanvas close was a
+          // consequence, not a freeze.
+          notifyError('Failed to load record.')
+          this.teardown()
+        },
       )
     }
 

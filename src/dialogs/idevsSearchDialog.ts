@@ -197,12 +197,20 @@ export abstract class IdevsSearchDialog<P = unknown> extends IdevsPropertyDialog
 
           const dlg = new DialogClass({})
           dlg.loadNewAndOpenDialog(false)
-          dlg.element[0].addEventListener('onDialogClose', (e: Event) => {
-            const data = (e as CustomEvent).detail
-            if (data && Object.keys(data as Record<string, unknown>).length > 0) {
-              this.getGrid()?.refresh()
-            }
-          })
+          // `{ once: true }` so each click of the "New" toolbar button
+          // produces ONE listener. Without it, opening "New" N times
+          // accumulated N listeners on dlg.element[0], firing N grid
+          // refreshes on the next close.
+          dlg.element[0].addEventListener(
+            'onDialogClose',
+            (e: Event) => {
+              const data = (e as CustomEvent).detail
+              if (data && Object.keys(data as Record<string, unknown>).length > 0) {
+                this.getGrid()?.refresh()
+              }
+            },
+            { once: true },
+          )
         },
       })
     }

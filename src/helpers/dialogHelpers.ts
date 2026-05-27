@@ -22,12 +22,21 @@ export type IDialogSize = {
 
 /**
  * Use within `onDialogOpen()` AFTER the super call. Sizes the modal dialog
- * matching the class's `.s-<ClassName>` selector to the supplied width/height
- * (or measured height when not specified) and centers it on the viewport.
+ * to the supplied width/height (or measured height when not specified) and
+ * centers it on the viewport.
+ *
+ * Selector source (in priority order):
+ *   1. `opt.selector` if supplied — preferred; immune to minification.
+ *   2. `.s-<className>` derived from `dialog.constructor.name` — preserves
+ *      PowerACC source behavior, but **breaks under JS minification**
+ *      (class names mangle to `t`, `Y`, etc.). Production consumers using
+ *      a minifier should pass `opt.selector` explicitly.
  */
-export function setDialogSize(dialog: object, opt?: IDialogSize): void {
-  const className = dialog.constructor.name
-  const name = `.s-${className}`
+export function setDialogSize(
+  dialog: object,
+  opt?: IDialogSize & { selector?: string },
+): void {
+  const name = opt?.selector ?? `.s-${dialog.constructor.name}`
   const optionH = opt?.height ?? 0
   const measuredH = ($(`${name} .modal-dialog`).innerHeight() ?? 0) as number
   const h = optionH > 0 ? optionH : measuredH
@@ -385,10 +394,26 @@ export function addSearchButton<F extends PrefixedContext>(options: SearchDialog
       dlg.FilterKey = filterField?.value
     }
     dlg.dialogOpen()
-    dlg.element[0].addEventListener('onDialogClose', (e: Event) => {
-      const detail = (e as CustomEvent).detail
-      options.callback(options.form, detail)
-    })
+    // `{ once: true }` so the listener removes itself after firing once.
+    // Without it, every button click added a fresh listener — opening
+    // and closing the dialog N times would invoke the consumer's
+    // callback N times on the (N+1)th close.
+    // Wrapped in try/catch so a thrown consumer callback can't bubble
+    // into Bootstrap/jQuery's event dispatch (which can leave the
+    // dialog in an inconsistent state).
+    dlg.element[0].addEventListener(
+      'onDialogClose',
+      (e: Event) => {
+        const detail = (e as CustomEvent).detail
+        try {
+          options.callback(options.form, detail)
+        } catch {
+          /* Consumer callback errors should not corrupt dialog teardown.
+           * Swallow here; Serenity's own onError pathways surface details. */
+        }
+      },
+      { once: true },
+    )
   }
 }
 

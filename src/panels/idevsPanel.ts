@@ -1,12 +1,7 @@
 import {
-  DecimalEditor,
   Decorators,
   type EntityGrid,
-  EnumEditor,
   Fluent,
-  LookupEditor,
-  ServiceLookupEditor,
-  StringEditor,
   Widget,
   type WidgetProps,
 } from '@serenity-is/corelib'
@@ -129,10 +124,18 @@ export class IdevsPanel<P extends IdevsPanelOptions = IdevsPanelOptions> extends
    */
   setFields(value: IdevsPanelFieldOptions[]): void {
     this.fields = value
-    // Fire-and-forget — renderPanel returns a Promise<Fluent> but the
-    // current implementation is synchronous. The promise interface exists
-    // for future async hooks.
-    if (this.panelContainer) void this.renderPanel()
+    if (!this.panelContainer) return
+    // Handle the render promise's rejection — renderPanel is currently
+    // synchronous but returns Promise<Fluent> for future async hooks. A
+    // bare `void this.renderPanel()` would convert any thrown editor
+    // ctor (e.g., LookupEditor service init throwing) into an
+    // unhandled rejection. .catch() swallows but routes to the Promise
+    // microtask queue rather than the global unhandledrejection.
+    this.renderPanel().catch(() => {
+      /* Editor instantiation failures are surfaced by Serenity's own
+       * notify/validation paths at construction time. Swallow here so
+       * setFields itself doesn't throw asynchronously. */
+    })
   }
 
   /**
@@ -298,28 +301,23 @@ export class IdevsPanel<P extends IdevsPanelOptions = IdevsPanelOptions> extends
     const inputFluent = field.container?.findFirst(`#${this.idPrefix}${field.fieldName}`)
     if (!inputFluent || !inputFluent[0]) return
 
-    const baseOpts = { element: inputFluent, ...(field.editorOptions ?? {}) }
-
-    // All editor constructors matching the standard `(props: { element, ... })`
-    // shape are instantiated directly — covers Serenity's built-ins
+    // Any editor constructor matching the standard `(props: { element, ... })`
+    // shape is instantiated directly — covers Serenity's built-ins
     // (StringEditor, DecimalEditor, EnumEditor, LookupEditor,
-    // ServiceLookupEditor) and the Idevs editor family (IdevsTagEditor,
+    // ServiceLookupEditor) AND the Idevs editor family (IdevsTagEditor,
     // IdevsNumericTagEditor, IdevsSearchButtonEditor,
     // IdevsSelfSearchButtonEditor, IdevsDateEditor) without explicit
     // imports — keeps IdevsPanel from depending on the IdevsDateEditor
     // subpath that requires flatpickr.
-    const editorClasses = [
-      StringEditor,
-      DecimalEditor,
-      EnumEditor,
-      LookupEditor,
-      ServiceLookupEditor,
-    ]
-    const isSupportedBuiltIn = editorClasses.some(
-      ctor => ctor === (field.editor as unknown),
-    )
-    if (!isSupportedBuiltIn && typeof field.editor !== 'function') return
+    //
+    // Earlier revisions of this function had an `editorClasses` allow-list
+    // guard, but the OR'd `typeof field.editor !== 'function'` clause made
+    // it dead code (every WidgetCtor is a function). The fall-through was
+    // always taken, so the imports + array existed for no behavioral
+    // benefit. Simplified to a direct function-type guard.
+    if (typeof field.editor !== 'function') return
 
+    const baseOpts = { element: inputFluent, ...(field.editorOptions ?? {}) }
     const instance = new field.editor(baseOpts as ConstructorParameters<typeof field.editor>[0])
     this.editorInstances[field.fieldName] = instance
     field.editorInstance = instance

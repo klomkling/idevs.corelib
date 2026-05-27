@@ -277,23 +277,47 @@ export class IdevsInlineDialog<TEntity = Record<string, unknown>> extends Widget
   }
 
   public async loadEntity(entity: TEntity): Promise<void> {
-    this.dialog.loadEntityAndOpenDialog(entity)
+    // Wrap the Serenity load call — these methods are synchronous in
+    // Serenity's contract but can throw (e.g., construction failure of
+    // the embedded form). Without the try/catch, a throw would become
+    // an unhandled rejection on the outer Promise; with it, the error
+    // is rethrown after onLoad's best-effort invocation. Callers
+    // awaiting loadEntity get a real rejection they can handle.
+    let loadErr: unknown
+    try {
+      this.dialog.loadEntityAndOpenDialog(entity)
+    } catch (e) {
+      loadErr = e
+    }
     await this.callPageCallback('onLoad', entity)
+    if (loadErr) throw loadErr
   }
 
   public async loadById(id: string | number): Promise<void> {
-    this.dialog.loadByIdAndOpenDialog(id as never)
+    let loadErr: unknown
+    try {
+      this.dialog.loadByIdAndOpenDialog(id as never)
+    } catch (e) {
+      loadErr = e
+    }
     await this.callPageCallback('onLoad', this.getEntity())
+    if (loadErr) throw loadErr
   }
 
   public async loadNew(): Promise<void> {
-    this.dialog.loadNewAndOpenDialog()
     // Pass the (typically empty) current entity, not the Fluent element —
     // consumers expect an entity-shaped argument matching loadEntity()
     // and loadById(). Source passed `this.dialog.element` here, which
     // surfaced a DOM wrapper to onLoad and broke any code that read
     // entity fields off the argument.
+    let loadErr: unknown
+    try {
+      this.dialog.loadNewAndOpenDialog()
+    } catch (e) {
+      loadErr = e
+    }
     await this.callPageCallback('onLoad', this.getEntity())
+    if (loadErr) throw loadErr
   }
 
   public async triggerCustomAction(actionName: string, data?: unknown): Promise<unknown> {

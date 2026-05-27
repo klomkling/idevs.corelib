@@ -3,6 +3,7 @@ import {
   Decorators,
   EntityDialog,
   Fluent,
+  notifyError,
   type SaveResponse,
   type ToolButton,
   tryFirst,
@@ -31,9 +32,13 @@ import { setActiveModal, setInactiveModal } from '../helpers/dialogHelpers'
  *   - `setInterval(100ms)` polling in the close-button handler replaced
  *     with a Promise that resolves when `_canClose` flips.
  *   - `onDialogClose` confirmDialog reordering: the source dispatched the
- *     close event BEFORE the user could respond to "save unsaved changes?"
- *     — this port keeps the original order (confirmDialog fires; close
- *     proceeds) but documents the limitation. Full async refactor deferred.
+ *     close event BEFORE the user could respond to "save unsaved changes?",
+ *     which let the dialog close out from under the user. This port FIXES
+ *     that — `onDialogClose` now blocks on the prompt via the
+ *     `_userConfirmedClose` flag and only proceeds via the prompt's button
+ *     handlers (`onYes-then-save-success` or `onNo-discard`). The Esc/
+ *     backdrop close paths route through the same gate as the custom
+ *     close-button click.
  */
 @Decorators.registerClass('Idevs.CoreLib.IdevsEntityDialog')
 export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P> {
@@ -237,10 +242,17 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
       confirmDialog(
         this.confirmMessage,
         () => {
-          // User chose "yes, save". Save runs; ONLY on success do we
-          // set the confirmed flag and close the dialog. If save fails
-          // (validation, service error) the success callback is never
-          // invoked — the dialog stays open with the unsaved-changes
+          // User chose "yes, save". Run validation first — if the form is
+          // invalid, surface a notifyError so the user knows why the close
+          // didn't proceed (Serenity's inline validation also fires, but
+          // it's easy to miss when focus is on the prompt button).
+          if (!this.validateBeforeSave()) {
+            notifyError('Save failed — please review the form for validation errors.')
+            return
+          }
+          // ONLY on save success do we set the confirmed flag and close.
+          // If save fails (service error post-validation) the callback
+          // never fires — the dialog stays open with the unsaved-changes
           // state intact, so the next close attempt re-prompts.
           this.save(() => {
             this._userConfirmedClose = true
@@ -391,11 +403,18 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
     }, 0)
   }
 
+  /** Max time waitForCanClose will poll before giving up (defensive cap). */
+  private static readonly CAN_CLOSE_MAX_WAIT_MS = 5_000
+
   private waitForCanClose(): Promise<void> {
     // Replaces the source's `setInterval(100ms)` polling. Resolves
     // immediately if _canClose is already true; otherwise polls quietly.
     // Interval handle stored on the instance so destroy() can clear it
     // (otherwise a never-flipping _canClose would leak the interval forever).
+    // Bounded by CAN_CLOSE_MAX_WAIT_MS — protects against a subclass
+    // override of updateInterface that throws before the snapshot timer
+    // resets _canClose, which would otherwise leave the interval running
+    // until destroy.
     return new Promise(resolve => {
       if (this._canClose) {
         resolve()
@@ -403,14 +422,11 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
       }
       // Clear any prior polling interval — only one waiter at a time.
       if (this._canClosePollId !== undefined) clearInterval(this._canClosePollId)
+      const startedAt = Date.now()
       this._canClosePollId = setInterval(() => {
-        if (this._isDestroyed) {
-          if (this._canClosePollId !== undefined) clearInterval(this._canClosePollId)
-          this._canClosePollId = undefined
-          resolve()
-          return
-        }
-        if (this._canClose) {
+        const elapsed = Date.now() - startedAt
+        const done = this._isDestroyed || this._canClose || elapsed >= IdevsEntityDialog.CAN_CLOSE_MAX_WAIT_MS
+        if (done) {
           if (this._canClosePollId !== undefined) clearInterval(this._canClosePollId)
           this._canClosePollId = undefined
           resolve()
@@ -433,10 +449,17 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
       confirmDialog(
         this.confirmMessage,
         () => {
-          // Save AND close — set the confirmed flag and close ONLY after
-          // save succeeds. A failed save (validation, service error)
-          // leaves _userConfirmedClose false, so the next close attempt
-          // re-prompts instead of silently discarding the dirty edits.
+          // Validate FIRST; surface a notifyError if invalid so the user
+          // sees concrete feedback at the close-attempt level (Serenity's
+          // inline errors also fire but can be missed when focus is on
+          // the prompt). On validation pass, save; on save success
+          // (callback fires), set the confirmed flag + close.
+          if (!this.validateBeforeSave()) {
+            notifyError('Save failed — please review the form for validation errors.')
+            // Restore modal layering since the close was cancelled.
+            this.restoreActiveModal()
+            return
+          }
           this.save(() => {
             this._userConfirmedClose = true
             this.dialogClose('save-and-close')
@@ -451,9 +474,26 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
           },
         },
       )
-      this.restoreActiveModal()
+      // NOTE: restoreActiveModal moved into the prompt callbacks above
+      // (review round 10 fix). The previous unconditional restore here
+      // ran synchronously AFTER queueing the async confirmDialog,
+      // undoing the inactive-modal layering before the user saw the
+      // prompt. Now restoration happens only when the prompt resolves
+      // (yes-validate-fail path; the yes-save-success path goes through
+      // dialogClose, which triggers a fresh onDialogClose → restore).
     } else {
       this.dialogClose('save-and-close')
     }
+  }
+
+  /**
+   * Pre-save validation guard. Override in subclasses for custom checks.
+   * Defaults to invoking Serenity's standard validateForm() if present;
+   * returns true (let save proceed) when the validator isn't available.
+   */
+  protected validateBeforeSave(): boolean {
+    const self = this as unknown as { validateForm?: () => boolean }
+    if (typeof self.validateForm === 'function') return self.validateForm()
+    return true
   }
 }
