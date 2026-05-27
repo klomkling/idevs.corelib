@@ -113,10 +113,23 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
    * `setEquality(key, value)` and the grid is refreshed.
    *
    * The replacement is a full overwrite (not a merge) — passing `{}`
-   * clears all filter equalities for the next refresh.
+   * clears all filter equalities for the next refresh. Stale keys from
+   * the prior dictionary are cleared on the view by calling
+   * `setEquality(key, undefined)` before the new keys are applied; the
+   * source (CsiSearchGrid) only added new equalities and left stale
+   * ones on the view, so consumers that changed or cleared filter keys
+   * at runtime got "ghost" equality filters on subsequent refreshes.
    */
   setFilterKeys(filters: Record<string, unknown>): void {
+    const priorKeys = Object.keys(this._filterKeys)
     this._filterKeys = filters
+    // Clear keys that were in the prior dict but not in the new one.
+    // Serenity's setEquality(field, undefined) clears the equality entry.
+    for (const key of priorKeys) {
+      if (!Object.prototype.hasOwnProperty.call(this._filterKeys, key)) {
+        this.setEquality(key, undefined)
+      }
+    }
     for (const [key, value] of Object.entries(this._filterKeys)) {
       this.setEquality(key, value)
     }
@@ -276,11 +289,28 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
   // ---- Load gating. ----
 
   /**
-   * Returns true iff the configured filterKeys are all populated AND, when
-   * autoLoad is off, a quick-search value is present. The check is purely
-   * read-only; explicit `clearItemsIfEmptySearch()` handles the "no
-   * search value → empty the grid" side-effect that the source folded
-   * inside this predicate.
+   * Load-gating predicate.
+   *
+   *   - When `autoLoad` is true, only the filter keys gate the load —
+   *     the grid loads as soon as every configured filterKey is non-empty
+   *     (the empty-filterKey-dict trivially passes).
+   *   - When `autoLoad` is false, the grid loads on-demand. Both
+   *     conditions must hold: every configured filterKey is non-empty
+   *     AND the quick-search `ContainsText` value is non-empty. The
+   *     empty-filterKey-dict case reduces to "requires ContainsText".
+   *
+   * The autoLoad=false branch additionally calls
+   * `clearItemsIfEmptySearch()` as a side effect when `ContainsText` is
+   * empty — the source folded this same side-effect inside the
+   * predicate; we kept the call but renamed for traceability.
+   *
+   * Note vs source: PowerACC's `CsiSearchGrid.getGridCanLoad` returned
+   * `filtersAllPopulated()` in the `autoLoad=false + filterKeys
+   * populated` branch even when `ContainsText` was empty, so a search
+   * grid would still issue a remote load before the user entered a
+   * quick-search value. That contradicted the on-demand intent — fixed
+   * here by requiring both signals. Consumers wanting the looser
+   * source-parity behavior can override `getGridCanLoad()` directly.
    */
   protected override getGridCanLoad(): boolean {
     if (this.getAutoLoad()) {
@@ -289,11 +319,12 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
     const searchValue = (this.view.params as ListRequest | undefined)?.ContainsText
     if (!searchValue) {
       this.clearItemsIfEmptySearch()
+      return false
     }
     if (Object.keys(this._filterKeys).length > 0) {
       return this.filtersAllPopulated()
     }
-    return !!searchValue
+    return true
   }
 
   private filtersAllPopulated(): boolean {

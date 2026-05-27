@@ -612,7 +612,14 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
     const fieldHeight = firstField.getBoundingClientRect().height
     container.querySelectorAll('.field').forEach(field => {
       const fieldName = field.getAttribute('data-itemname')
-      const isCurrent = field.className === currentField.className
+      // Compare element identity, NOT className strings. Source compared
+      // `field.className === currentField.className`, but standard
+      // Serenity forms render every field as `<div class="field ...">`
+      // with the same shared "field" class — every sibling would match,
+      // and expandGrid would never add `field-hidden` to anything. The
+      // expansion feature was effectively broken whenever the surrounding
+      // form used the standard shared class.
+      const isCurrent = field === currentField
       const isAlwaysVisible = !!fieldName && alwaysVisibles.includes(fieldName)
       if (!isCurrent && !isAlwaysVisible) {
         field.classList.add('field-hidden')
@@ -627,7 +634,8 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
     const alwaysVisibles = this.getAlwaysVisibleFields()
     container.querySelectorAll('.field').forEach(field => {
       const fieldName = field.getAttribute('data-itemname')
-      const isCurrent = field.className === currentField.className
+      // Element identity, not className strings. See expandGrid above.
+      const isCurrent = field === currentField
       const isAlwaysVisible = !!fieldName && alwaysVisibles.includes(fieldName)
       if (!isCurrent && !isAlwaysVisible) {
         field.classList.remove('field-hidden')
@@ -642,12 +650,18 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
     const button = this.toolbar?.findButton('.expand-grid-button')
     if (!button) return
     const icon = button.findFirst('i')
+    // Source had these icons inverted: when expanded it was showing the
+    // outward-arrows ("click to expand") icon while the title said
+    // "Restore grid" — icon and title disagreed. When expanded we should
+    // show the inward-arrows / compress icon ("click to restore"); when
+    // collapsed we should show the outward-arrows / expand icon ("click
+    // to expand"). Matches the initial-state icon in `getButtons()`.
     if (this._isExpanded) {
-      icon.removeClass('fa-compress-arrows-alt')
-      icon.addClass('fa-expand-arrows-alt')
-    } else {
       icon.removeClass('fa-expand-arrows-alt')
       icon.addClass('fa-compress-arrows-alt')
+    } else {
+      icon.removeClass('fa-compress-arrows-alt')
+      icon.addClass('fa-expand-arrows-alt')
     }
     button.attr('title', this._isExpanded ? 'Restore grid' : 'Expand grid')
   }

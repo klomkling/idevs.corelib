@@ -1,0 +1,59 @@
+{
+  "findings": [
+    {
+      "title": "[P2] Clear stale equalities when replacing filters",
+      "body": "When callers replace filters with `{}` or with a different key set, only the new keys are passed to `setEquality`, so equalities previously registered on the Serenity view remain in effect for the next refresh. This breaks the documented full-overwrite behavior for grids that change or clear their parent filters at runtime.",
+      "confidence_score": 0.86,
+      "priority": 2,
+      "code_location": {
+        "absolute_file_path": "/Users/sarawut/GitHub/Idevs/single-repo/idevs.corelib/src/grids/idevsSearchGrid.ts",
+        "line_range": {
+          "start": 119,
+          "end": 122
+        }
+      }
+    },
+    {
+      "title": "[P2] Keep search gating disabled without text",
+      "body": "When `getAutoLoad()` is false and at least one required filter is populated, this branch returns `filtersAllPopulated()` even if `ContainsText` is empty, so a search grid can still issue a remote load before the user enters a quick-search value. That contradicts the documented on-demand loading behavior above and only shows up for grids that combine `autoLoad=false` with filter keys.",
+      "confidence_score": 0.92,
+      "priority": 2,
+      "code_location": {
+        "absolute_file_path": "/Users/sarawut/GitHub/Idevs/single-repo/idevs.corelib/src/grids/idevsSearchGrid.ts",
+        "line_range": {
+          "start": 293,
+          "end": 294
+        }
+      }
+    },
+    {
+      "title": "[P2] Compare the actual expanded field element",
+      "body": "In normal Serenity forms all `.field` siblings often share the same `className` (for example `field`), so comparing class names marks every field as the current field and `expandGrid()` never adds `field-hidden` to sibling fields. This breaks the grid-expansion feature whenever the surrounding fields use the standard shared class; compare the element itself instead of its class string.",
+      "confidence_score": 0.94,
+      "priority": 2,
+      "code_location": {
+        "absolute_file_path": "/Users/sarawut/GitHub/Idevs/single-repo/idevs.corelib/src/grids/idevsGridEditorBase.ts",
+        "line_range": {
+          "start": 615,
+          "end": 615
+        }
+      }
+    },
+    {
+      "title": "[P3] Show the restore icon after expanding",
+      "body": "After the user expands the grid, `_isExpanded` is true but this update removes the compress icon and adds the expand icon, so the toolbar keeps advertising the same action instead of the restore/collapse action. The title is updated to `Restore grid`, making the icon and title disagree until the state is toggled again.",
+      "confidence_score": 0.88,
+      "priority": 3,
+      "code_location": {
+        "absolute_file_path": "/Users/sarawut/GitHub/Idevs/single-repo/idevs.corelib/src/grids/idevsGridEditorBase.ts",
+        "line_range": {
+          "start": 645,
+          "end": 648
+        }
+      }
+    }
+  ],
+  "overall_correctness": "patch is incorrect",
+  "overall_explanation": "The patch typechecks, but the new search grid leaves stale filter state and can load prematurely with autoLoad disabled, and the grid expansion UI does not hide standard sibling fields. These are functional regressions in the newly added behavior.",
+  "overall_confidence_score": 0.91
+}

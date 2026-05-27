@@ -100,14 +100,44 @@ describe('IdevsSearchGrid — filter / criteria state', () => {
     expect(probe.refresh).toHaveBeenCalledTimes(1)
   })
 
-  it('setFilterKeys with {} clears all filters and still refreshes', () => {
+  it('setFilterKeys with {} clears stale keys + still refreshes', () => {
+    // Regression for review finding #1: prior implementation only added
+    // new equalities and left stale ones on the Serenity view. The fix
+    // clears each prior key via setEquality(key, undefined) before
+    // applying the new dict.
     const probe = makeProbe()
     probe._filterKeys = { stale: 'value' }
     probe.setFilterKeys({})
     expect(probe.getFilterKeys()).toEqual({})
-    // No setEquality calls because the new dict is empty.
-    expect(probe.setEquality).not.toHaveBeenCalled()
+    // setEquality MUST be called with the stale key + undefined to clear
+    // the prior equality from the view.
+    expect(probe.setEquality).toHaveBeenCalledWith('stale', undefined)
+    expect(probe.setEquality).toHaveBeenCalledTimes(1)
     expect(probe.refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('setFilterKeys clears stale keys when replacing with a different key set', () => {
+    // Regression for review finding #1: changing the filter key set
+    // (e.g. `{ a: 1 }` → `{ b: 2 }`) should clear `a`, not leave it as
+    // a ghost equality on the view.
+    const probe = makeProbe()
+    probe._filterKeys = { a: 1, b: 2 }
+    probe.setFilterKeys({ c: 3 })
+    expect(probe.setEquality).toHaveBeenCalledWith('a', undefined)
+    expect(probe.setEquality).toHaveBeenCalledWith('b', undefined)
+    expect(probe.setEquality).toHaveBeenCalledWith('c', 3)
+  })
+
+  it('setFilterKeys does NOT clear a key that survives the replacement', () => {
+    // The clear-on-replacement only fires for keys that are no longer
+    // present. `a` was in both dicts → only the new equality for `a`
+    // should be applied, not a stale-clear.
+    const probe = makeProbe()
+    probe._filterKeys = { a: 1, b: 2 }
+    probe.setFilterKeys({ a: 99 })
+    expect(probe.setEquality).not.toHaveBeenCalledWith('a', undefined)
+    expect(probe.setEquality).toHaveBeenCalledWith('a', 99)
+    expect(probe.setEquality).toHaveBeenCalledWith('b', undefined)
   })
 
   it('setCriteriaKeys applies the param and refreshes', () => {
@@ -233,6 +263,26 @@ describe('IdevsSearchGrid — getGridCanLoad', () => {
     probe.view.params['ContainsText'] = 'q'
     probe._filterKeys = { a: '' }
     expect(probe.getGridCanLoad()).toBe(false)
+  })
+
+  it('autoLoad=false + filterKeys fully populated but no ContainsText → false', () => {
+    // Regression for review finding #2: source returned true here, so a
+    // search grid would issue a remote load before the user entered a
+    // quick-search value. Documented behavior is "on-demand" — both
+    // filter keys AND ContainsText must be present when autoLoad is off.
+    const probe = makeProbe({ autoLoad: false })
+    probe._filterKeys = { a: 'value' }
+    // No ContainsText.
+    expect(probe.getGridCanLoad()).toBe(false)
+    // Side-effect: the grid is cleared when no ContainsText is present.
+    expect(probe.view.setItems).toHaveBeenCalledWith([], true)
+  })
+
+  it('autoLoad=false + filterKeys fully populated + ContainsText set → true', () => {
+    const probe = makeProbe({ autoLoad: false })
+    probe._filterKeys = { a: 'value' }
+    probe.view.params['ContainsText'] = 'q'
+    expect(probe.getGridCanLoad()).toBe(true)
   })
 
   it('clearItemsIfEmptySearch is callable as a standalone side-effect', () => {

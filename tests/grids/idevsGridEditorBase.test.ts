@@ -498,6 +498,111 @@ describe('IdevsGridEditorBase — toggleGridExpansion null-guard', () => {
   })
 })
 
+describe('IdevsGridEditorBase — expandGrid identity comparison (review finding #3)', () => {
+  // The source compared `field.className === currentField.className`,
+  // which marked every `.field` sibling sharing the standard "field"
+  // class as the current field, so `field-hidden` never got applied.
+  // The port compares element identity (`field === currentField`).
+  function buildCategoryFixture(): { category: HTMLElement; current: HTMLElement; other: HTMLElement } {
+    const category = document.createElement('div')
+    category.classList.add('category')
+    document.body.appendChild(category)
+
+    const current = document.createElement('div')
+    current.className = 'field'
+    current.setAttribute('data-itemname', 'CurrentField')
+    category.appendChild(current)
+
+    const other = document.createElement('div')
+    other.className = 'field' // SAME className as `current`
+    other.setAttribute('data-itemname', 'OtherField')
+    category.appendChild(other)
+
+    return { category, current, other }
+  }
+
+  it('expandGrid hides sibling fields that share the standard "field" class', () => {
+    const probe = makeProbe()
+    const { category, current, other } = buildCategoryFixture()
+    // Stub `Element.getBoundingClientRect` so expandGrid's height read
+    // doesn't NaN under jsdom (jsdom always returns 0 for bounding
+    // rects, which is fine — we only care about the field-hidden
+    // classList mutation).
+    const protoCallProbe = probe as unknown as {
+      expandGrid(container: HTMLElement, currentField: HTMLElement): void
+    }
+    protoCallProbe.expandGrid(category, current)
+    expect(other.classList.contains('field-hidden')).toBe(true)
+    expect(current.classList.contains('field-hidden')).toBe(false)
+  })
+
+  it('restoreGrid removes field-hidden from sibling fields with the standard "field" class', () => {
+    const probe = makeProbe()
+    const { category, current, other } = buildCategoryFixture()
+    other.classList.add('field-hidden')
+    current.classList.add('field-hidden')
+    const protoCallProbe = probe as unknown as {
+      restoreGrid(container: HTMLElement, currentField: HTMLElement): void
+    }
+    protoCallProbe.restoreGrid(category, current)
+    expect(other.classList.contains('field-hidden')).toBe(false)
+    // currentField was already in the "skip" set in the source; the
+    // identity comparison preserves that — current is excluded from
+    // the removal because it IS the current field. (Its prior
+    // field-hidden was set by us in the fixture; restoreGrid would
+    // ordinarily NOT have applied it. The point is: restoreGrid
+    // doesn't touch the current field, so the bit stays.)
+    expect(current.classList.contains('field-hidden')).toBe(true)
+  })
+})
+
+describe('IdevsGridEditorBase — updateExpandButton icon swap (review finding #4)', () => {
+  // Source assigned icons inverted relative to title — when `_isExpanded`
+  // was true it showed the outward-arrows icon ("click to expand") while
+  // the title said "Restore grid". Icon + title agreed only when
+  // collapsed. Fixed so the icon matches what the click WILL do.
+  function makeIconProbe(initialExpanded: boolean): {
+    probe: GridEditorProbe
+    icon: { classList: Set<string>; addClass(c: string): void; removeClass(c: string): void }
+    button: { attr: ReturnType<typeof vi.fn> }
+  } {
+    const probe = makeProbe()
+    probe._isExpanded = initialExpanded
+    const iconClasses = new Set<string>(['fa', 'fa-expand-arrows-alt'])
+    const icon = {
+      classList: iconClasses,
+      addClass(c: string) {
+        iconClasses.add(c)
+      },
+      removeClass(c: string) {
+        iconClasses.delete(c)
+      },
+    }
+    const button = {
+      attr: vi.fn(),
+      findFirst: vi.fn(() => icon),
+    }
+    probe.toolbar = { findButton: vi.fn(() => button) }
+    return { probe, icon, button }
+  }
+
+  it('shows the compress (restore) icon when expanded', () => {
+    const { probe, icon, button } = makeIconProbe(true)
+    ;(probe as unknown as { updateExpandButton(): void }).updateExpandButton()
+    expect(icon.classList.has('fa-compress-arrows-alt')).toBe(true)
+    expect(icon.classList.has('fa-expand-arrows-alt')).toBe(false)
+    expect(button.attr).toHaveBeenCalledWith('title', 'Restore grid')
+  })
+
+  it('shows the expand icon when collapsed', () => {
+    const { probe, icon, button } = makeIconProbe(false)
+    ;(probe as unknown as { updateExpandButton(): void }).updateExpandButton()
+    expect(icon.classList.has('fa-expand-arrows-alt')).toBe(true)
+    expect(icon.classList.has('fa-compress-arrows-alt')).toBe(false)
+    expect(button.attr).toHaveBeenCalledWith('title', 'Expand grid')
+  })
+})
+
 describe('IdevsGridEditorBase — module export shape', () => {
   it('exports the class as a constructor function with all public + protected hooks', () => {
     expect(typeof IdevsGridEditorBase).toBe('function')
