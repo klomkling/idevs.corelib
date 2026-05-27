@@ -1,4 +1,5 @@
 export * from './idevsEntityGrid'
+export * from './idevsSearchGrid'
 
 // IdevsSelectableEntityGrid is intentionally NOT re-exported from this
 // barrel — it depends on `@serenity-is/extensions`, an OPTIONAL peer
