@@ -259,7 +259,12 @@ export class IdevsInlineDialog<TEntity = Record<string, unknown>> extends Widget
 
   public async loadNew(): Promise<void> {
     this.dialog.loadNewAndOpenDialog()
-    await this.callPageCallback('onLoad', this.dialog.element as unknown as TEntity)
+    // Pass the (typically empty) current entity, not the Fluent element —
+    // consumers expect an entity-shaped argument matching loadEntity()
+    // and loadById(). Source passed `this.dialog.element` here, which
+    // surfaced a DOM wrapper to onLoad and broke any code that read
+    // entity fields off the argument.
+    await this.callPageCallback('onLoad', this.getEntity())
   }
 
   public async triggerCustomAction(actionName: string, data?: unknown): Promise<unknown> {

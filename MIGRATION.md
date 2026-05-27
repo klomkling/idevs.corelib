@@ -29,9 +29,11 @@ All in `src/panels/`, exported from the public barrel.
   element.createLayout(3, 'col')
 
   // idevs.corelib:
-  import { createLayout } from '@idevs/corelib/helpers'
+  import { createLayout } from '@idevs/corelib'
   createLayout(element, 3, 'col')
   ```
+
+  Note: helpers are re-exported from the main `@idevs/corelib` barrel — there is no separate `@idevs/corelib/helpers` subpath in `package.json#exports`. Use the root import.
 
   Affected functions: `createLayout`, `addElementGroup`, `createGroup`, `addElements`, `addElementsWithEmptyElement`, `setTabIndex`, `groupColumnHeader`.
 

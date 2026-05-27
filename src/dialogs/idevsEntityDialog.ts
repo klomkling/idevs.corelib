@@ -232,11 +232,14 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
       confirmDialog(
         this.confirmMessage,
         () => {
-          // User chose "yes, save" — save runs, onSaveSuccess clears the
-          // initialEntity snapshot so the next close attempt has nothing
-          // to confirm against.
+          // User chose "yes, save". Save runs; on success we close the
+          // dialog. Without the success callback driving dialogClose,
+          // the user's action ("save and close") would degrade into a
+          // bare save while the dialog stays open.
           this._userConfirmedClose = true
-          this.save()
+          this.save(() => {
+            this.dialogClose(result ?? 'save-and-close')
+          })
         },
         {
           title: this.confirmTitle,
@@ -399,13 +402,25 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
 
     if (this.hasUnsavedChanges()) {
       setInactiveModal(this.domNode, true)
-      confirmDialog(this.confirmMessage, () => this.save(), {
-        title: this.confirmTitle,
-        onNo: () => {
-          this.initialEntity = this.getSaveEntity() as TItem
-          this.dialogClose('save-with-leave-changes')
+      confirmDialog(
+        this.confirmMessage,
+        () => {
+          // Save AND close — pass dialogClose to save() so this is a real
+          // save-and-close, not a bare save that leaves the dialog open.
+          this._userConfirmedClose = true
+          this.save(() => {
+            this.dialogClose('save-and-close')
+          })
         },
-      })
+        {
+          title: this.confirmTitle,
+          onNo: () => {
+            this._userConfirmedClose = true
+            this.initialEntity = this.getSaveEntity() as TItem
+            this.dialogClose('save-with-leave-changes')
+          },
+        },
+      )
       this.restoreActiveModal()
     } else {
       this.dialogClose('save-and-close')

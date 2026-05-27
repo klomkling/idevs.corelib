@@ -68,6 +68,25 @@ export abstract class IdevsSearchDialog<P = unknown> extends IdevsPropertyDialog
   get preItems(): unknown[] | undefined {
     return this._preItems
   }
+  // === PascalCase compatibility shims ===
+  // IdevsSearchButtonEditor.openDialog writes these by property assignment
+  // per the PowerACC dialog interface contract. Without a setter pair,
+  // (a) DialogSize/Type/Permission writes silently no-op, and
+  // (b) `preItems` assignment THROWS in strict mode (getter-only).
+  // Each setter routes to the camelCase method so subclass overrides
+  // remain effective.
+  set DialogSize(value: 'sm' | 'md' | 'lg' | 'xl') {
+    this.setDialogSize(value)
+  }
+  set DialogType(value: string) {
+    this.setDialogType(value)
+  }
+  set DialogPermission(value: string) {
+    this.setDialogPermission(value)
+  }
+  set preItems(value: unknown[]) {
+    this.setPreItems(value)
+  }
   setPreItems(value: unknown[]): void {
     this._preItems = value
     const grid = this.getGrid()
