@@ -1,6 +1,8 @@
 // Core modules
 export * from './editors'
+export * from './dialogs'
 export * from './formatters'
+export * from './panels'
 export * from './ui'
 export * from './helpers'
 
