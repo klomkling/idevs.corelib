@@ -233,6 +233,14 @@ export class IdevsInlineDialog<TEntity = Record<string, unknown>> extends Widget
 
       buttons.forEach(button => {
         const buttonElement = Fluent('button')
+          // Explicit type='button' — without this, the button inherits
+          // the embedded form's submit semantics and clicking it triggers
+          // form validation + submit AS WELL AS the custom click handler.
+          .attr('type', 'button')
+          // Honor IdevsCustomButton.id — the option type marks it as
+          // required but the source never propagated it to the element,
+          // breaking styling/lookup/testability.
+          .attr('id', button.id)
           .class(['btn', button.cssClass ?? ''])
           .text(button.text)
           .on('click', button.click ?? (() => {}))

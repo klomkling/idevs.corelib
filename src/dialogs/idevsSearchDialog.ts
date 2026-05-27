@@ -15,10 +15,16 @@ import { IdevsPropertyDialog } from './idevsPropertyDialog'
  * buttons), and a custom dialog-size option. Subclasses implement
  * `getGrid()` and `getFormKey()`.
  *
- * Replaces PowerACC's `CsiSearchDialog`. PascalCase setters from the source
- * (`set FilterKeys`, `set CriteriaKeys`, `set SearchValue`, `set DialogSize`)
- * are dropped in favor of camelCase methods inherited from the parent + a
- * couple new ones (`setDialogSize`/`setDialogType`/`setDialogPermission`).
+ * Replaces PowerACC's `CsiSearchDialog`. Preferred API: camelCase methods
+ * (`setFilterKeys`, `setCriteriaKeys`, `setSearchValue` inherited from
+ * IdevsPropertyDialog; `setDialogSize`/`setDialogType`/`setDialogPermission`
+ * /`setPreItems` added here). The PowerACC PascalCase assignment setters
+ * (`dialog.FilterKeys = ...`, `dialog.CriteriaKeys = ...`,
+ * `dialog.DialogSize = ...`, `dialog.DialogType = ...`,
+ * `dialog.DialogPermission = ...`, `dialog.preItems = ...`) are PRESERVED
+ * as compatibility shims that route to the camelCase methods. Each routes
+ * through the camelCase method so subclass overrides remain effective via
+ * either entry point.
  */
 
 type GridLike = {

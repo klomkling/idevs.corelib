@@ -265,7 +265,15 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
 
     // No unsaved changes, or the user already confirmed — proceed.
     if (!this.customEvent) this.setCustomEvent({})
-    this.element[0].dispatchEvent(this.customEvent!)
+    const evt = this.customEvent!
+    this.element[0].dispatchEvent(evt)
+    // Clear the customEvent after dispatch — without this, a reused
+    // dialog instance can replay stale `detail` from a prior close (e.g.,
+    // a subclass called setCustomEvent during a save flow, then the user
+    // opens + closes again without triggering a fresh setCustomEvent).
+    // Reset forces the next close to either set a fresh payload or fall
+    // back to an empty {}.
+    this.customEvent = undefined
     this.restoreActiveModal()
     this._userConfirmedClose = false // reset for next open
     super.onDialogClose(result)

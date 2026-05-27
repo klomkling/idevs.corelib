@@ -7,10 +7,14 @@ import { setActiveModal, setInactiveModal } from '../helpers/dialogHelpers'
  * `setFilterKeys` / `setCriteriaKeys` / `setSearchValue` to receive search-
  * style context from a parent search button.
  *
- * Replaces PowerACC's `CsiPropertyDialog`. The original used PascalCase
- * assignment-style setters (`dialog.FilterKeys = {...}`); this port exposes
- * camelCase methods directly (`dialog.setFilterKeys({...})`) — same naming
- * convention as the editor renames in batches 2-3.
+ * Replaces PowerACC's `CsiPropertyDialog`. The preferred API surface is the
+ * camelCase methods (`setFilterKeys`, `setCriteriaKeys`, `setSearchValue`);
+ * the PascalCase assignment setters from PowerACC (`dialog.FilterKeys = ...`)
+ * are PRESERVED as compatibility shims that route to the camelCase methods.
+ * Existing callers — notably IdevsSearchButtonEditor.openDialog which still
+ * writes by assignment per the dialog interface contract — continue to work
+ * unchanged. Subclass overrides on the camelCase methods take effect through
+ * either entry point.
  */
 @Decorators.registerClass('Idevs.CoreLib.IdevsPropertyDialog')
 export class IdevsPropertyDialog<P = unknown> extends PropertyDialog<unknown, P> {
@@ -68,8 +72,15 @@ export class IdevsPropertyDialog<P = unknown> extends PropertyDialog<unknown, P>
 
   protected override onDialogClose(result?: string): void {
     if (!this.customEvent) this.setCustomEvent({})
-    this.element[0].dispatchEvent(this.customEvent!)
-    this._onDataSelected?.(this.customEvent!.detail)
+    const evt = this.customEvent!
+    this.element[0].dispatchEvent(evt)
+    this._onDataSelected?.(evt.detail)
+    // Clear the customEvent after dispatch — without this, a reused dialog
+    // instance can replay stale `detail` on a subsequent close if no new
+    // setCustomEvent was called in the interim (e.g., user cancels after
+    // a prior data selection). Resetting forces the next close to either
+    // explicitly set a payload or fall back to an empty {}.
+    this.customEvent = undefined
     this.restoreActiveModal()
     super.onDialogClose(result)
   }
