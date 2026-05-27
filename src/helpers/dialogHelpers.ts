@@ -349,12 +349,20 @@ export type SearchDialogOptions<F extends PrefixedContext> = {
  * button class already exists on the page).
  */
 export function addSearchButton<F extends PrefixedContext>(options: SearchDialogOptions<F>): void {
-  if (document.querySelector(`.${options.buttonClass}`)) return
-
   const fieldHolder = (options.form as unknown as Record<string, { domNode: HTMLElement }>)[
     options.fieldName as string
   ]
   if (!fieldHolder?.domNode?.parentElement) return
+
+  const fieldParent = fieldHolder.domNode.parentElement
+
+  // Idempotency check scoped to THIS field's parent (was document-global).
+  // Multiple forms/dialogs sharing a buttonClass — common when the same
+  // search-button helper is wired up on every customer/order form on a
+  // page — would have left every form after the first one without a
+  // button. The scoped check still prevents double-injection on the
+  // target field while allowing siblings to receive their own button.
+  if (fieldParent.querySelector(`.${options.buttonClass}`)) return
 
   const btn = document.createElement('button')
   btn.setAttribute('type', 'button')
@@ -365,8 +373,8 @@ export function addSearchButton<F extends PrefixedContext>(options: SearchDialog
   icon.classList.add('bi', 'bi-search')
   btn.appendChild(icon)
 
-  const ref = fieldHolder.domNode.parentElement.querySelector('.vx')
-  fieldHolder.domNode.parentElement.insertBefore(btn, ref)
+  const ref = fieldParent.querySelector('.vx')
+  fieldParent.insertBefore(btn, ref)
 
   btn.onclick = () => {
     const dlg = new options.dialogClass({})

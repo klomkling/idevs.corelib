@@ -67,6 +67,8 @@ export class IdevsPanel<P extends IdevsPanelOptions = IdevsPanelOptions> extends
   protected fields: IdevsPanelFieldOptions[] = []
   private dummyFields = 0
   protected panelContainer!: Fluent
+  /** Floating title element — reference held so setTitle can update it. */
+  private floatingTitleEl?: HTMLElement
   protected editorInstances: Record<string, Widget<unknown>> = {}
 
   static createPanel<P extends IdevsPanelOptions = IdevsPanelOptions>(
@@ -109,13 +111,37 @@ export class IdevsPanel<P extends IdevsPanelOptions = IdevsPanelOptions> extends
   }
   setTitle(value: string): void {
     this.panelTitle = value
+    // Update the rendered floating title too — without this the visible
+    // text would never refresh after construction. The element is created
+    // via the deferred createFloatingTitle setTimeout(0); if setTitle is
+    // called BEFORE that fires, the deferred render reads the latest
+    // panelTitle value naturally.
+    if (this.floatingTitleEl) this.floatingTitleEl.textContent = value
   }
 
   getFields(): IdevsPanelFieldOptions[] {
     return this.fields
   }
+  /**
+   * Set the field list and re-render. Called as the public replacement
+   * for the old PowerACC `Fields = [...]` setter; consumers expect the
+   * new field list to materialize without further action.
+   */
   setFields(value: IdevsPanelFieldOptions[]): void {
     this.fields = value
+    // Fire-and-forget — renderPanel returns a Promise<Fluent> but the
+    // current implementation is synchronous. The promise interface exists
+    // for future async hooks.
+    if (this.panelContainer) void this.renderPanel()
+  }
+
+  /**
+   * Public render entry point — re-renders the panel with the current
+   * field list. Consumers needing to refresh the panel after mutating
+   * `getFields()` directly can call this.
+   */
+  public render(): Promise<Fluent> {
+    return this.renderPanel()
   }
 
   constructor(props: WidgetProps<P>) {
@@ -145,7 +171,7 @@ export class IdevsPanel<P extends IdevsPanelOptions = IdevsPanelOptions> extends
   /** Overlays the panel title as a floating label on the top border. */
   private createFloatingTitle(wrapper: Fluent): void {
     setTimeout(() => {
-      Fluent('div')
+      const titleEl = Fluent('div')
         .class(['position-absolute', 'px-3'])
         .style(css => {
           css.left = '1rem'
@@ -154,6 +180,9 @@ export class IdevsPanel<P extends IdevsPanelOptions = IdevsPanelOptions> extends
         })
         .text(this.panelTitle)
         .appendTo(wrapper)
+        .getNode()
+      // Cache the element so setTitle can update its text after creation.
+      this.floatingTitleEl = titleEl as HTMLElement
     }, 0)
   }
 
