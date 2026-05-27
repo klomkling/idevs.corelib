@@ -124,6 +124,9 @@ export class IdevsTabControl<
       // Resize any SlickGrid contained inside a freshly-shown tab — without
       // this, the grid canvas measures incorrectly while the pane was hidden.
       // Timer handle stored so destroy() can cancel a pending resize.
+      // Coalesce rapid tab switches: cancel any prior pending resize so we
+      // only do one canvas pass per quiescent period.
+      if (this.resizeTimer !== undefined) clearTimeout(this.resizeTimer)
       this.resizeTimer = setTimeout(() => {
         this.resizeTimer = undefined
         for (const id in this.widgets) {

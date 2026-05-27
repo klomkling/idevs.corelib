@@ -43,6 +43,16 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
   private _canClose = true
   private _isCloned = false
   private _beforeUnloadHandler?: (event: BeforeUnloadEvent) => void
+  private _initialSnapshotTimer?: ReturnType<typeof setTimeout>
+  private _canClosePollId?: ReturnType<typeof setInterval>
+  private _isDestroyed = false
+  /**
+   * Tracks whether the user has already responded to the unsaved-changes
+   * confirm prompt for the current close attempt. Without this, calling
+   * super.onDialogClose() while the prompt is still pending would close
+   * the dialog out from under the user.
+   */
+  private _userConfirmedClose = false
 
   private _confirmMessage = 'You have unsaved changes. Do you want to save before closing?'
   get confirmMessage(): string {
@@ -101,9 +111,18 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
   }
 
   override destroy(): void {
+    this._isDestroyed = true
     if (this._beforeUnloadHandler) {
       window.removeEventListener('beforeunload', this._beforeUnloadHandler)
       this._beforeUnloadHandler = undefined
+    }
+    if (this._initialSnapshotTimer !== undefined) {
+      clearTimeout(this._initialSnapshotTimer)
+      this._initialSnapshotTimer = undefined
+    }
+    if (this._canClosePollId !== undefined) {
+      clearInterval(this._canClosePollId)
+      this._canClosePollId = undefined
     }
     super.destroy()
   }
@@ -140,11 +159,18 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
   protected override updateInterface(): void {
     super.updateInterface()
 
-    // Delay closing until the form has finished its async loading. The
-    // PowerACC source used a hard 2-second timeout — fragile but
-    // load timings vary, so we preserve it as a documented constraint.
+    // Delay the snapshot until the form has finished its async loading.
+    // The PowerACC source used a hard 2-second timeout — fragile but load
+    // timings vary, so we preserve it as a documented constraint.
+    // Timer handle stored so destroy() can cancel it (otherwise the
+    // callback would run against a torn-down dialog and throw).
     this._canClose = false
-    setTimeout(() => {
+    if (this._initialSnapshotTimer !== undefined) {
+      clearTimeout(this._initialSnapshotTimer)
+    }
+    this._initialSnapshotTimer = setTimeout(() => {
+      this._initialSnapshotTimer = undefined
+      if (this._isDestroyed) return
       this.initialEntity = this.getSaveEntity() as TItem
       this._canClose = true
     }, 2000)
@@ -178,15 +204,46 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
   }
 
   protected override onDialogClose(result?: string): void {
-    if (this.hasUnsavedChanges()) {
-      confirmDialog(this.confirmMessage, () => this.save(), {
-        title: this.confirmTitle,
-      })
+    // If the user hasn't yet responded to a confirm prompt AND there are
+    // unsaved changes, show the prompt and BLOCK the close. The dialog
+    // remains open until the user resolves the prompt (which then routes
+    // through save() or dialogClose with the confirmed flag set).
+    //
+    // Without this gate, the source's behavior was: confirmDialog fires
+    // async, but dispatch + super.onDialogClose runs synchronously — the
+    // dialog closes out from under the user. The Esc/backdrop paths still
+    // bypassed the gated close-button handler.
+    if (!this._userConfirmedClose && this.hasUnsavedChanges()) {
+      confirmDialog(
+        this.confirmMessage,
+        () => {
+          // User chose "yes, save" — save runs, onSaveSuccess clears the
+          // initialEntity snapshot so the next close attempt has nothing
+          // to confirm against.
+          this._userConfirmedClose = true
+          this.save()
+        },
+        {
+          title: this.confirmTitle,
+          onNo: () => {
+            // User chose "no, discard" — clear the snapshot so the close
+            // proceeds without re-prompting, then trigger close.
+            this._userConfirmedClose = true
+            this.initialEntity = this.getSaveEntity() as TItem
+            this.dialogClose(result ?? 'discarded-unsaved-changes')
+          },
+        },
+      )
+      // Block the close — the prompt's button handler will re-trigger
+      // dialogClose with _userConfirmedClose = true.
+      return
     }
 
+    // No unsaved changes, or the user already confirmed — proceed.
     if (!this.customEvent) this.setCustomEvent({})
     this.element[0].dispatchEvent(this.customEvent!)
     this.restoreActiveModal()
+    this._userConfirmedClose = false // reset for next open
     super.onDialogClose(result)
   }
 
@@ -290,14 +347,25 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
   private waitForCanClose(): Promise<void> {
     // Replaces the source's `setInterval(100ms)` polling. Resolves
     // immediately if _canClose is already true; otherwise polls quietly.
+    // Interval handle stored on the instance so destroy() can clear it
+    // (otherwise a never-flipping _canClose would leak the interval forever).
     return new Promise(resolve => {
       if (this._canClose) {
         resolve()
         return
       }
-      const id = setInterval(() => {
+      // Clear any prior polling interval — only one waiter at a time.
+      if (this._canClosePollId !== undefined) clearInterval(this._canClosePollId)
+      this._canClosePollId = setInterval(() => {
+        if (this._isDestroyed) {
+          if (this._canClosePollId !== undefined) clearInterval(this._canClosePollId)
+          this._canClosePollId = undefined
+          resolve()
+          return
+        }
         if (this._canClose) {
-          clearInterval(id)
+          if (this._canClosePollId !== undefined) clearInterval(this._canClosePollId)
+          this._canClosePollId = undefined
           resolve()
         }
       }, 100)

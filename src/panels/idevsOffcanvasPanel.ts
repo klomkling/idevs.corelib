@@ -42,6 +42,9 @@ export class IdevsOffcanvasPanel extends Widget<IdevsOffcanvasPanelOptions> {
   private readonly dlg: EntityDialog<unknown, unknown>
   private isLoaded = false
   private isTorn = false
+  private dataChangeHandler?: () => void
+  /** Pending setTimeout handles from injectDialogIntoPanel's retry loop. */
+  private pendingTimers: Array<ReturnType<typeof setTimeout>> = []
 
   constructor(prop: WidgetProps<IdevsOffcanvasPanelOptions>) {
     super(prop)
@@ -55,11 +58,14 @@ export class IdevsOffcanvasPanel extends Widget<IdevsOffcanvasPanelOptions> {
     // The embedded dialog signals data changes via jQuery custom event.
     // Both event spellings supported (IdevsEntityDialog dispatches both
     // 'onDataChange' and 'ondatachange' — see batch 4a Copilot review).
-    const handler = () => {
+    // Handler stored on the instance so teardown can call .off() with the
+    // function reference (otherwise .off() would remove ALL listeners for
+    // those events, including ones the consumer may have attached).
+    this.dataChangeHandler = () => {
       this.props.onDataChangeCallback?.()
       this.teardown()
     }
-    $(this.dlg.domNode).on('onDataChange ondatachange', handler)
+    $(this.dlg.domNode).on('onDataChange ondatachange', this.dataChangeHandler)
   }
 
   override destroy(): void {
@@ -78,10 +84,21 @@ export class IdevsOffcanvasPanel extends Widget<IdevsOffcanvasPanelOptions> {
     this.isTorn = true
 
     document.body.classList.remove(IdevsOffcanvasPanel.BODY_OPEN_CLASS)
-    try {
-      $(this.dlg.domNode).off('onDataChange ondatachange')
-    } catch {
-      /* dialog DOM may already be detached */
+
+    // Cancel any pending injectDialogIntoPanel retries so they can't run
+    // against detached DOM (or click the hidden toggle button) after teardown.
+    for (const id of this.pendingTimers) clearTimeout(id)
+    this.pendingTimers = []
+
+    if (this.dataChangeHandler) {
+      try {
+        // Scoped removal — pass the handler reference so we don't strip
+        // listeners that consumers attached for the same event names.
+        $(this.dlg.domNode).off('onDataChange ondatachange', this.dataChangeHandler)
+      } catch {
+        /* dialog DOM may already be detached */
+      }
+      this.dataChangeHandler = undefined
     }
     try {
       this.dlg.destroy()
@@ -185,8 +202,20 @@ export class IdevsOffcanvasPanel extends Widget<IdevsOffcanvasPanelOptions> {
     const MAX_RETRIES = 100
     let attempts = 0
 
+    const scheduleTimer = (cb: () => void, delay: number): void => {
+      if (this.isTorn) return
+      const id = setTimeout(() => {
+        // Drop the handle from the pending list before running the callback
+        // so destroy() doesn't try to clear an already-fired timer.
+        this.pendingTimers = this.pendingTimers.filter(t => t !== id)
+        if (this.isTorn) return
+        cb()
+      }, delay)
+      this.pendingTimers.push(id)
+    }
+
     const tryInject = (): void => {
-      setTimeout(() => {
+      scheduleTimer(() => {
         attempts++
         if (attempts >= MAX_RETRIES) return // give up silently (source console.error'd)
 
@@ -208,13 +237,13 @@ export class IdevsOffcanvasPanel extends Widget<IdevsOffcanvasPanelOptions> {
           parent.removeAttribute('data-hiddenby')
         }
 
-        setTimeout(() => {
+        scheduleTimer(() => {
           const titlebar = this.overlayDiv.querySelector<HTMLElement>('.panel-titlebar')
           const titleEl = this.overlayDiv.querySelector<HTMLElement>('.offcanvas-title')
           if (titlebar && titleEl) {
-            // XSS-safer than innerHTML copy — clone the first child node tree
-            // into the title element. textContent fallback when there's no
-            // child element.
+            // XSS-safer than raw markup copy — clone the first child node
+            // tree into the title element. textContent fallback when
+            // there's no child element.
             const firstChild = titlebar.firstElementChild
             if (firstChild) {
               titleEl.replaceChildren(firstChild.cloneNode(true))

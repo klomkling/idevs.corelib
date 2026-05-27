@@ -10,6 +10,7 @@ import {
   createDivWithClassesAndAppendTo,
   createGroup,
   createLayout,
+  groupColumnHeader,
   moveDivToNewParent,
   moveDivsToNewParent,
   setTabIndex,
@@ -178,6 +179,26 @@ describe('createDivWithClasses + moveDivs', () => {
     makeChildSpan(parent, 'item', 'B')
     moveDivsToNewParent(parent, '.bucket', '.item')
     expect(parent.querySelectorAll('.bucket > .item')).toHaveLength(2)
+  })
+})
+
+describe('groupColumnHeader — selector safety', () => {
+  it('does not throw when columnName lacks a matching column (early bail path)', () => {
+    // Regression: source used `[id$=${columnName}]` unquoted/unescaped.
+    // A columnName with special characters like ':' would either silently
+    // mis-match or throw 'Failed to execute querySelector'. With CSS.escape
+    // + quoted attribute selector, the function constructs a valid
+    // selector and bails cleanly when no column matches.
+    //
+    // Note: we can't exercise the full happy path here because JSDOM
+    // doesn't implement getClientRects().item() the same way as the
+    // browser — this test focuses on the selector-safety invariant.
+    const grid = makeChildDiv(document.body)
+    makeChildDiv(grid, 'slick-header') // no .slick-header-columns child → bails
+
+    expect(() => groupColumnHeader(grid, 'Title', 'foo:bar', 1, 30)).not.toThrow()
+    expect(() => groupColumnHeader(grid, 'Title', 'name with spaces', 1, 30)).not.toThrow()
+    expect(() => groupColumnHeader(grid, 'Title', 'no-special-chars', 1, 30)).not.toThrow()
   })
 })
 

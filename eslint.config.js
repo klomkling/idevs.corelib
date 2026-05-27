@@ -38,6 +38,7 @@ export default [
         Element: 'readonly',
         ChildNode: 'readonly',
         BeforeUnloadEvent: 'readonly',
+        CSS: 'readonly',
         HTMLHeadingElement: 'readonly',
         HTMLTableElement: 'readonly',
         HTMLTableSectionElement: 'readonly',

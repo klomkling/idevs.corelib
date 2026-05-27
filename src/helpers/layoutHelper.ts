@@ -229,7 +229,13 @@ export function groupColumnHeader(
   height = height ?? headerRect?.height ?? 0
 
   const columns: string[] = [columnName]
-  let targetColumn = domNode.querySelector<HTMLElement>(`[id$=${columnName}]`)
+  // Escape `columnName` for CSS attribute selector safety — column names
+  // can include characters that need quoting (or break the selector
+  // entirely). CSS.escape handles all required cases.
+  const escapedColumnName = typeof CSS !== 'undefined' && CSS.escape
+    ? CSS.escape(columnName)
+    : columnName.replace(/(["\\[\]])/g, '\\$1')
+  let targetColumn = domNode.querySelector<HTMLElement>(`[id$="${escapedColumnName}"]`)
   if (!targetColumn) return
   const prefix = (targetColumn.getAttribute('id') ?? '').replace(columnName, '')
   let width = targetColumn.getClientRects().item(0)?.width ?? 0
@@ -290,7 +296,14 @@ export function groupColumnHeader(
     } else {
       child.findFirst('.slick-resizable-handle')?.remove()
       if (childName !== columnName) {
-        document.querySelector(`#${prefix}${childName}`)?.addEventListener('click', (evt: Event) => {
+        // Scope the lookup to this grid's domNode (was `document.querySelector`
+        // — would bind to the WRONG grid when multiple SlickGrids share id
+        // prefixes). Also escape the constructed id for CSS-selector safety.
+        const escapedId =
+          typeof CSS !== 'undefined' && CSS.escape
+            ? CSS.escape(`${prefix}${childName}`)
+            : `${prefix}${childName}`.replace(/(["\\[\]])/g, '\\$1')
+        domNode.querySelector(`#${escapedId}`)?.addEventListener('click', (evt: Event) => {
           evt.preventDefault()
           evt.stopPropagation()
           return false
