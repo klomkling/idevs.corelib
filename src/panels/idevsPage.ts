@@ -39,18 +39,25 @@ export class IdevsPage<P extends IdevsPageOptions = IdevsPageOptions> extends Wi
     const titleDiv = Fluent('div').class(['panel-titlebar']).appendTo(this.element)
     this.renderTitle(titleDiv.getNode())
 
+    // Single toolbar surface: construct Toolbar bound to the visible
+    // toolbarDiv so `this.toolbar.findButton()` / `updateInterface()` /
+    // `destroy()` operate on the buttons users actually see. Previously
+    // we built a detached Toolbar instance AND manually re-rendered the
+    // buttons into a separate div — the Toolbar instance's internal
+    // domNode was orphaned, so subclass code calling
+    // `this.toolbar.findButton(...)` would search a hidden tree and
+    // return nothing.
+    const toolbarDiv = Fluent('div')
+      .class(['s-Toolbar', 'clearfix'])
+      .appendTo(this.element)
     // Cache getButtons() — without this, an override that returns a fresh
     // array (or has side effects) would render a different set than the
     // toolbar was constructed with.
     const buttons = this.getButtons()
-    this.toolbar = new Toolbar({ buttons })
-    const toolbarDiv = Fluent('div')
-      .class(['s-Toolbar', 'clearfix'])
-      .appendTo(this.element)
-    buttons.forEach(button => {
-      this.toolbar.createButton(toolbarDiv.getNode(), button)
+    this.toolbar = new Toolbar({
+      element: toolbarDiv.getNode(),
+      buttons,
     })
-    this.toolbar.render()
 
     this.panelContainer = Fluent('div')
       .class(['panel-container', 'position-relative', 'flex-fill'])

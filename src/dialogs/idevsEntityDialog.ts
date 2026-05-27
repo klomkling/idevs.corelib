@@ -54,11 +54,18 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
   private _isDestroyed = false
   /**
    * Tracks whether the user has already responded to the unsaved-changes
-   * confirm prompt for the current close attempt. Without this, calling
-   * super.onDialogClose() while the prompt is still pending would close
-   * the dialog out from under the user.
+   * confirm prompt for the current close attempt. The hide.bs.modal
+   * before-close listener (setupBeforeCloseGate) checks this flag and
+   * preventDefault's the close when it's false AND the form is dirty.
    */
   private _userConfirmedClose = false
+  /**
+   * The Bootstrap modal element (the `.modal` wrapper around domNode)
+   * that we attach the hide.bs.modal listener to. Captured at open time
+   * for clean detach in destroy().
+   */
+  private _modalEl?: HTMLElement
+  private _beforeCloseHandler?: (e: Event) => void
 
   private _confirmMessage = 'You have unsaved changes. Do you want to save before closing?'
   get confirmMessage(): string {
@@ -134,6 +141,7 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
       clearInterval(this._canClosePollId)
       this._canClosePollId = undefined
     }
+    this.teardownBeforeCloseGate()
     super.destroy()
   }
 
@@ -162,9 +170,108 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
     this.cloneButton?.toggle(this.isEditMode())
 
     this.initCloseButtonHandler()
+    this.setupBeforeCloseGate()
     setInactiveModal(this.domNode)
 
     super.onDialogOpen()
+  }
+
+  /**
+   * Register the Bootstrap `hide.bs.modal` before-close listener that
+   * gates Esc / backdrop / programmatic close paths on the dirty-check
+   * prompt.
+   *
+   * Why a before-close listener rather than the inherited
+   * `onDialogClose` override: Serenity's `onDialogClose` is invoked from
+   * the AFTER-close hook (the modal is already hiding when it fires).
+   * Returning early from `onDialogClose` does NOT keep the modal
+   * visible. The confirm prompt would appear over a hidden modal and
+   * the user could end up with an orphaned dialog state. Bootstrap's
+   * `hide.bs.modal` fires BEFORE the hide animation and respects
+   * `preventDefault()` — that's what we need to actually gate the
+   * close.
+   *
+   * Flow:
+   *   1. User presses Esc / clicks backdrop / calls `dialogClose()`.
+   *   2. Bootstrap dispatches `hide.bs.modal`.
+   *   3. Our handler fires: if not yet confirmed AND dirty,
+   *      `e.preventDefault()` (modal stays open) and show the confirm
+   *      prompt.
+   *   4. Prompt's onYes-save-success or onNo-discard callback sets
+   *      `_userConfirmedClose = true` then calls `dialogClose()`.
+   *   5. Bootstrap re-dispatches `hide.bs.modal`; our handler sees the
+   *      flag and lets the close proceed.
+   *   6. After Bootstrap finishes hiding, `onDialogClose` runs and
+   *      dispatches `customEvent` + cleanup. The flag is reset there
+   *      for the next open.
+   */
+  private setupBeforeCloseGate(): void {
+    // Deferred — Serenity's modal wrapper may not be in the DOM yet at
+    // the moment onDialogOpen fires. setTimeout(0) lets the mount settle.
+    setTimeout(() => {
+      if (this._isDestroyed) return
+      const modal = this.domNode.closest<HTMLElement>('.modal')
+      if (!modal) return
+
+      // Replace any prior wiring (defensive — onDialogOpen runs on every
+      // open of a reused dialog instance).
+      this.teardownBeforeCloseGate()
+
+      const handler = (e: Event) => {
+        if (this._userConfirmedClose) return
+        if (!this.hasUnsavedChanges()) return
+        e.preventDefault()
+        this.showDirtyCloseConfirm()
+      }
+      modal.addEventListener('hide.bs.modal', handler)
+      this._modalEl = modal
+      this._beforeCloseHandler = handler
+    }, 0)
+  }
+
+  private teardownBeforeCloseGate(): void {
+    if (this._modalEl && this._beforeCloseHandler) {
+      this._modalEl.removeEventListener('hide.bs.modal', this._beforeCloseHandler)
+    }
+    this._modalEl = undefined
+    this._beforeCloseHandler = undefined
+  }
+
+  /**
+   * Show the confirm prompt for an unsaved-changes close attempt. Used
+   * by both the before-close gate (setupBeforeCloseGate) and the
+   * custom close button (onCloseButtonClick). Both paths route through
+   * this single implementation so the user only ever sees ONE prompt
+   * spelling and `_userConfirmedClose` is set in one place per outcome.
+   */
+  private showDirtyCloseConfirm(result?: string): void {
+    confirmDialog(
+      this.confirmMessage,
+      () => {
+        // Yes, save. Validate first so the user gets explicit feedback if
+        // validation blocks the save — Serenity's inline errors fire too
+        // but are easy to miss while focus is on the prompt.
+        if (!this.validateBeforeSave()) {
+          notifyError('Save failed — please review the form for validation errors.')
+          return
+        }
+        this.save(() => {
+          this._userConfirmedClose = true
+          this.dialogClose(result ?? 'save-and-close')
+        })
+      },
+      {
+        title: this.confirmTitle,
+        onNo: () => {
+          // Discard — clear the snapshot so subsequent dirty checks pass,
+          // then trigger close. The before-close handler will see the
+          // confirmed flag and let it through.
+          this._userConfirmedClose = true
+          this.initialEntity = this.getSaveEntity() as TItem
+          this.dialogClose(result ?? 'discarded-unsaved-changes')
+        },
+      },
+    )
   }
 
   protected setCustomEvent(detail: unknown): void {
@@ -229,64 +336,26 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
   }
 
   protected override onDialogClose(result?: string): void {
-    // If the user hasn't yet responded to a confirm prompt AND there are
-    // unsaved changes, show the prompt and BLOCK the close. The dialog
-    // remains open until the user resolves the prompt (which then routes
-    // through save() or dialogClose with the confirmed flag set).
-    //
-    // Without this gate, the source's behavior was: confirmDialog fires
-    // async, but dispatch + super.onDialogClose runs synchronously — the
-    // dialog closes out from under the user. The Esc/backdrop paths still
-    // bypassed the gated close-button handler.
-    if (!this._userConfirmedClose && this.hasUnsavedChanges()) {
-      confirmDialog(
-        this.confirmMessage,
-        () => {
-          // User chose "yes, save". Run validation first — if the form is
-          // invalid, surface a notifyError so the user knows why the close
-          // didn't proceed (Serenity's inline validation also fires, but
-          // it's easy to miss when focus is on the prompt button).
-          if (!this.validateBeforeSave()) {
-            notifyError('Save failed — please review the form for validation errors.')
-            return
-          }
-          // ONLY on save success do we set the confirmed flag and close.
-          // If save fails (service error post-validation) the callback
-          // never fires — the dialog stays open with the unsaved-changes
-          // state intact, so the next close attempt re-prompts.
-          this.save(() => {
-            this._userConfirmedClose = true
-            this.dialogClose(result ?? 'save-and-close')
-          })
-        },
-        {
-          title: this.confirmTitle,
-          onNo: () => {
-            // User chose "no, discard" — clear the snapshot so the close
-            // proceeds without re-prompting, then trigger close.
-            this._userConfirmedClose = true
-            this.initialEntity = this.getSaveEntity() as TItem
-            this.dialogClose(result ?? 'discarded-unsaved-changes')
-          },
-        },
-      )
-      // Block the close — the prompt's button handler will re-trigger
-      // dialogClose with _userConfirmedClose = true.
-      return
-    }
-
-    // No unsaved changes, or the user already confirmed — proceed.
+    // onDialogClose runs from the AFTER-close hook — by the time we get
+    // here the modal is already hiding. The dirty-close GATE lives in
+    // setupBeforeCloseGate (a hide.bs.modal preventDefault listener); we
+    // only reach onDialogClose when the close is actually allowed to
+    // proceed (either no unsaved changes OR user already confirmed).
+    // This method's responsibility: dispatch customEvent, restore modal
+    // stack layering, reset the confirmed flag for the next open, and
+    // tear down the before-close listener.
     if (!this.customEvent) this.setCustomEvent({})
     const evt = this.customEvent!
     this.element[0].dispatchEvent(evt)
     // Clear the customEvent after dispatch — without this, a reused
-    // dialog instance can replay stale `detail` from a prior close (e.g.,
-    // a subclass called setCustomEvent during a save flow, then the user
-    // opens + closes again without triggering a fresh setCustomEvent).
-    // Reset forces the next close to either set a fresh payload or fall
-    // back to an empty {}.
+    // dialog instance can replay stale `detail` from a prior close
+    // (e.g., a subclass called setCustomEvent during a save flow, then
+    // the user opens + closes again without triggering a fresh
+    // setCustomEvent). Reset forces the next close to either set a
+    // fresh payload or fall back to an empty {}.
     this.customEvent = undefined
     this.restoreActiveModal()
+    this.teardownBeforeCloseGate()
     this._userConfirmedClose = false // reset for next open
     super.onDialogClose(result)
   }
@@ -438,52 +507,13 @@ export class IdevsEntityDialog<TItem, P = unknown> extends EntityDialog<TItem, P
   private async onCloseButtonClick(e: MouseEvent): Promise<void> {
     e.preventDefault()
     await this.waitForCanClose()
-    // waitForCanClose() resolves on destroy too (so the Promise doesn't
-    // leak the interval). Re-check the destroyed flag here — without this
-    // guard, hasUnsavedChanges / dialogClose would run against a torn-down
-    // dialog and throw on detached DOM.
     if (this._isDestroyed) return
-
-    if (this.hasUnsavedChanges()) {
-      setInactiveModal(this.domNode, true)
-      confirmDialog(
-        this.confirmMessage,
-        () => {
-          // Validate FIRST; surface a notifyError if invalid so the user
-          // sees concrete feedback at the close-attempt level (Serenity's
-          // inline errors also fire but can be missed when focus is on
-          // the prompt). On validation pass, save; on save success
-          // (callback fires), set the confirmed flag + close.
-          if (!this.validateBeforeSave()) {
-            notifyError('Save failed — please review the form for validation errors.')
-            // Restore modal layering since the close was cancelled.
-            this.restoreActiveModal()
-            return
-          }
-          this.save(() => {
-            this._userConfirmedClose = true
-            this.dialogClose('save-and-close')
-          })
-        },
-        {
-          title: this.confirmTitle,
-          onNo: () => {
-            this._userConfirmedClose = true
-            this.initialEntity = this.getSaveEntity() as TItem
-            this.dialogClose('save-with-leave-changes')
-          },
-        },
-      )
-      // NOTE: restoreActiveModal moved into the prompt callbacks above
-      // (review round 10 fix). The previous unconditional restore here
-      // ran synchronously AFTER queueing the async confirmDialog,
-      // undoing the inactive-modal layering before the user saw the
-      // prompt. Now restoration happens only when the prompt resolves
-      // (yes-validate-fail path; the yes-save-success path goes through
-      // dialogClose, which triggers a fresh onDialogClose → restore).
-    } else {
-      this.dialogClose('save-and-close')
-    }
+    // Route through dialogClose — the before-close gate
+    // (setupBeforeCloseGate) sees the resulting hide.bs.modal and runs
+    // the dirty-check + confirm prompt centrally. Previously this method
+    // duplicated the prompt logic; consolidated so all close paths
+    // (Esc, backdrop, programmatic, custom X button) hit one prompt.
+    this.dialogClose('save-and-close')
   }
 
   /**

@@ -69,9 +69,38 @@ export class IdevsOffcanvasPanel extends Widget<IdevsOffcanvasPanelOptions> {
     // those events, including ones the consumer may have attached).
     this.dataChangeHandler = () => {
       this.props.onDataChangeCallback?.()
-      this.teardown()
+      this.hideThenTeardown()
     }
     $(this.dlg.domNode).on('onDataChange ondatachange', this.dataChangeHandler)
+  }
+
+  /**
+   * If the offcanvas is currently shown by Bootstrap, ask Bootstrap to
+   * hide it first — its hide.bs.offcanvas/hidden.bs.offcanvas lifecycle
+   * tears down the backdrop, releases focus, and unlocks body scroll.
+   * Calling teardown() directly removes the DOM but leaves all three of
+   * those states stuck active. The hidden.bs.offcanvas listener wired in
+   * load() will then call teardown() after Bootstrap finishes hiding.
+   *
+   * Fallback: if no Bootstrap Offcanvas instance is bound (rare —
+   * happens if the consumer manually disposed it), teardown directly.
+   */
+  private hideThenTeardown(): void {
+    const Offcanvas = (
+      window as unknown as {
+        bootstrap?: {
+          Offcanvas?: { getInstance(el: HTMLElement): { hide(): void } | null }
+        }
+      }
+    ).bootstrap?.Offcanvas
+    const instance = Offcanvas?.getInstance(this.overlayDiv) ?? null
+    if (instance) {
+      // hidden.bs.offcanvas (once-only handler registered in load) will
+      // call teardown() after the fade-out animation completes.
+      instance.hide()
+    } else {
+      this.teardown()
+    }
   }
 
   override destroy(): void {

@@ -59,6 +59,14 @@ type DialogInternals<TEntity> = EntityDialog<TEntity, unknown> & {
   save(callback: (response: unknown) => void): void
   form: Record<string, { element: Fluent; value: unknown }>
   arrange?: () => void
+  /**
+   * Callback-bearing retrieve API on Serenity's EntityDialog. The
+   * "AndOpenDialog" variants kick off an async service call and don't
+   * expose completion — use these for cases where the caller needs to
+   * know when the load finished (e.g., to fire onLoad with a populated
+   * entity rather than firing it immediately against an empty one).
+   */
+  loadById(id: unknown, done?: () => void, fail?: () => void): void
 }
 
 @Decorators.registerClass('Idevs.CoreLib.IdevsInlineDialog')
@@ -293,15 +301,39 @@ export class IdevsInlineDialog<TEntity = Record<string, unknown>> extends Widget
     if (loadErr) throw loadErr
   }
 
-  public async loadById(id: string | number): Promise<void> {
-    let loadErr: unknown
-    try {
-      this.dialog.loadByIdAndOpenDialog(id as never)
-    } catch (e) {
-      loadErr = e
-    }
-    await this.callPageCallback('onLoad', this.getEntity())
-    if (loadErr) throw loadErr
+  public loadById(id: string | number): Promise<void> {
+    // Use the callback-bearing `loadById` (not `loadByIdAndOpenDialog`)
+    // and await the service response BEFORE firing onLoad. Previously
+    // we fired loadByIdAndOpenDialog synchronously and called
+    // callPageCallback('onLoad', getEntity()) on the next tick — the
+    // service call was still in flight, so onLoad observed an EMPTY
+    // entity and the returned promise resolved before the dialog
+    // actually had data. Consumers using onLoad to initialize dependent
+    // UI got stale/missing data.
+    //
+    // The "AndOpenDialog" suffix is irrelevant here — IdevsInlineDialog
+    // overrides `dialogOpen` to a no-op (inline rendering, not modal),
+    // so we don't need that path.
+    return new Promise<void>((resolve, reject) => {
+      try {
+        this.dialog.loadById(
+          id as unknown,
+          () => {
+            // Loaded — fire onLoad with the now-populated entity.
+            this.callPageCallback('onLoad', this.getEntity())
+              .then(() => resolve())
+              .catch(reject)
+          },
+          () => {
+            // Serenity surfaces its own error toast/inline message;
+            // reject the outer promise so awaiters can react.
+            reject(new Error(`IdevsInlineDialog.loadById failed for id: ${String(id)}`))
+          },
+        )
+      } catch (e) {
+        reject(e)
+      }
+    })
   }
 
   public async loadNew(): Promise<void> {
@@ -325,21 +357,28 @@ export class IdevsInlineDialog<TEntity = Record<string, unknown>> extends Widget
   }
 
   public getEntity(): TEntity {
-    if (this.dialog.entity && Object.keys(this.dialog.entity as Record<string, unknown>).length > 0) {
-      return this.dialog.entity
-    }
+    // Always read CURRENT form values first, then merge over the loaded
+    // entity so non-form fields (IDs, audit timestamps, etc.) are
+    // preserved while user edits propagate to consumer callbacks.
+    //
+    // The previous implementation returned `this.dialog.entity` directly
+    // when it was non-empty — that meant any consumer of onFormChange /
+    // onValidate / onSave / onCustomAction observed the ORIGINAL loaded
+    // values, not the user's current edits. Validation / save-side logic
+    // would run against stale data for existing records.
+    const loadedEntity = (this.dialog.entity as Record<string, unknown> | undefined) ?? {}
     const form = this.dialog.element.findFirst('.s-Form')
-    if (!form[0]) return {} as TEntity
+    if (!form[0]) return loadedEntity as TEntity
 
-    const entity = {} as Record<string, unknown>
+    const formEntity: Record<string, unknown> = { ...loadedEntity }
     form.findAll('.field[data-itemname]').forEach(input => {
       const fieldName = input.getAttribute('data-itemname')
       if (!fieldName) return
       const formInput = this.dialog.form[fieldName]
       if (!formInput) return
-      entity[fieldName] = formInput.value
+      formEntity[fieldName] = formInput.value
     })
-    return entity as TEntity
+    return formEntity as TEntity
   }
 
   public validateForm(): boolean {
