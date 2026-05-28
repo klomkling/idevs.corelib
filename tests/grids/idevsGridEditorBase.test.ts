@@ -510,6 +510,63 @@ describe('IdevsGridEditorBase — toggleGridExpansion null-guard', () => {
     }
     expect(() => probe.toggleGridExpansion()).not.toThrow()
   })
+
+  it('does NOT flip _isExpanded when the ancestor guard bails (round-8 #1 Copilot)', () => {
+    // Round-8 #1: prior code flipped `_isExpanded` BEFORE the ancestor
+    // guard. When the guard bailed, internal state was toggled with
+    // no DOM update — the next successful call would then run the
+    // restore branch even though the grid was never expanded. Fix:
+    // only flip state once the action is actually committed.
+    const probe = makeProbe()
+    probe._isExpanded = false
+    probe.element = { closest: vi.fn(() => null) }
+    probe.toggleGridExpansion()
+    expect(probe._isExpanded).toBe(false)
+
+    // Same check with starting state `true` — the bail must not
+    // toggle in either direction.
+    probe._isExpanded = true
+    probe.toggleGridExpansion()
+    expect(probe._isExpanded).toBe(true)
+  })
+})
+
+describe('IdevsGridEditorBase — destroy idempotency (round-8 #2 Copilot)', () => {
+  // Round-8 #2: prior destroy() set _destroyed but didn't guard
+  // against re-entry. A second call would re-execute the cleanup loop
+  // AND call super.destroy() again — under Serenity's widget
+  // hierarchy that can throw or double-cleanup DOM/plugin state. Fix
+  // matches the sibling pattern in IdevsGridEditController.destroy().
+  it('second destroy() call is a no-op', () => {
+    const probe = makeProbe()
+    const cleanup = vi.fn()
+    probe.eventCleanup.push(cleanup)
+    probe.destroy()
+    expect(cleanup).toHaveBeenCalledTimes(1)
+    // Second call must NOT re-invoke cleanups, must NOT throw.
+    expect(() => probe.destroy()).not.toThrow()
+    expect(cleanup).toHaveBeenCalledTimes(1)
+  })
+
+  it('subscribers added between destroy calls do not fire on the second destroy', () => {
+    // Defensive corollary: even if some subscriber-adding code path
+    // races between the two destroy() calls (unlikely but possible
+    // under async teardown), the second destroy must not be a
+    // back-door for re-running cleanup.
+    const probe = makeProbe()
+    probe.destroy()
+    // After first destroy, subscribeToRowChange returns a no-op per
+    // round-6 #6 — but the test confirms the subscribers array stays
+    // empty, and a second destroy() is a no-op.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      probe.subscribeToRowChange(() => {})
+      expect(probe._rowChangeSubscribers.length).toBe(0)
+      expect(() => probe.destroy()).not.toThrow()
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
 })
 
 describe('IdevsGridEditorBase — expandGrid identity comparison (review finding #3)', () => {

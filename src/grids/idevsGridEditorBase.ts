@@ -718,10 +718,20 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
   // ---- Grid expansion ----
 
   public toggleGridExpansion(): void {
-    this._isExpanded = !this._isExpanded
+    // Resolve required ancestors FIRST. Prior to round-8 Copilot
+    // review, `_isExpanded` was flipped before this guard — if the
+    // grid was rendered outside the expected `form > .category > .field`
+    // chain (test harness, embedded view), the method returned with
+    // internal state already toggled but no DOM mutation + no button
+    // refresh. The next call would then run the WRONG branch
+    // (restoreGrid when the grid was never expanded, vice versa) and
+    // the button icon/title would drift out of sync. Now the state
+    // flip only happens once the cleanup-/expand-path is actually
+    // taken.
     const category = this.element.closest('.category')?.getNode() as HTMLElement | undefined
     const currentField = this.element.closest('.field')?.getNode() as HTMLElement | undefined
     if (!category || !currentField) return
+    this._isExpanded = !this._isExpanded
     if (this._isExpanded) this.expandGrid(category, currentField)
     else this.restoreGrid(category, currentField)
     this.updateExpandButton()
@@ -1024,6 +1034,11 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
   // ---- Teardown ----
 
   override destroy(): void {
+    // Idempotency guard — repeated `destroy()` calls would otherwise
+    // re-enter `super.destroy()`, which under Serenity's widget
+    // hierarchy can throw or double-cleanup DOM/plugin state.
+    // Matches the sibling pattern in `IdevsGridEditController.destroy()`.
+    if (this._destroyed) return
     // Flag must be set FIRST so any callbacks (including subscriber
     // cleanups that re-attempt subscription on teardown) see the
     // post-destroy state and reject with a warn rather than push into
