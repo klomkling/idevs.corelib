@@ -686,6 +686,30 @@ describe('IdevsGridEditController — editor marker + controller-managed toggle-
     expect(targetCell.classList.contains('with-editor')).toBe(false)
   })
 
+  it('toggle-off strips BOTH with-editor AND text-white classes (round-7 #5)', () => {
+    // Round 7 #5: prior toggle-off only removed `with-editor`. The
+    // Lookup renderer adds BOTH `with-editor` (the controller) AND
+    // `text-white` (the renderer itself). The row-change cleanup
+    // path was already removing both, but the same-cell toggle-off
+    // only removed one, leaving Lookup cells with `text-white`
+    // (white text on white background) after the editor closed.
+    const { targetCell, click } = buildRendererProbe()
+    // Renderer simulates the Lookup pattern: appendEditorChild + adds
+    // `text-white` to the cell.
+    const renderer: IdevsCellEditorRender = ({ target, appendEditorChild }) => {
+      appendEditorChild(document.createElement('input'))
+      target.classList.add('text-white')
+    }
+    controller!.registerCellEditor('Custom.X', renderer)
+    click() // mount
+    expect(targetCell.classList.contains('with-editor')).toBe(true)
+    expect(targetCell.classList.contains('text-white')).toBe(true)
+    click() // toggle-off
+    expect(targetCell.classList.contains('with-editor')).toBe(false)
+    // Round 7 #5 regression: text-white MUST also be stripped.
+    expect(targetCell.classList.contains('text-white')).toBe(false)
+  })
+
   it('toggle-off preserves formatter markup (only the marked editor is removed)', () => {
     const { targetCell, click } = buildRendererProbe()
     const formatter = document.createElement('span')

@@ -489,8 +489,7 @@ export class IdevsGridEditController<
         if (firstChild && this.isEditableCell(firstChild)) {
           firstChild.remove()
         }
-        slickCell.classList.remove('with-editor')
-        slickCell.classList.remove('text-white')
+        this.cleanupCellEditorClasses(slickCell)
       }
     }
 
@@ -709,8 +708,29 @@ export class IdevsGridEditController<
     const editorChild = this.findEditorChild(target)
     if (!editorChild) return false
     editorChild.remove()
-    target.classList.remove('with-editor')
+    this.cleanupCellEditorClasses(target)
     return true
+  }
+
+  /**
+   * Strip all classes that an editor renderer might have added to the
+   * cell when mounting (currently `with-editor` and `text-white` — the
+   * latter is added by `renderLookupEditor` so the dark Select2 dropdown
+   * doesn't bleed into the cell underneath).
+   *
+   * Called from BOTH cleanup paths so they stay symmetrical:
+   *   1. `handleActiveCellChanged` — clearing the prior cell when the
+   *      active cell changes to a different row.
+   *   2. `removeExistingEditor` (toggle-off) — same-cell second click.
+   *
+   * Prior to this helper the two paths drifted: the row-change cleanup
+   * removed both classes; the toggle-off only removed `with-editor`. A
+   * second click on a Lookup cell left `text-white` behind → invisible
+   * text on white background.
+   */
+  private cleanupCellEditorClasses(cell: HTMLElement): void {
+    cell.classList.remove('with-editor')
+    cell.classList.remove('text-white')
   }
 
   // ---- Built-in editor factories. Arrow-property so `this` binding
