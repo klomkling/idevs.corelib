@@ -343,21 +343,11 @@ describe('IdevsGridEditController — navigation primitives', () => {
     expect(nextCell.call(controller, 0)).toBe(2) // skips index 1
   })
 
-  it('isEditableCell matches the s-*Editor regex', () => {
-    const { grid } = makeFakeGrid({})
-    controller = new IdevsGridEditController({
-      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
-    })
-    const isEditable = (controller as unknown as { isEditableCell(el: HTMLElement): boolean })
-      .isEditableCell
-    const editorCell = document.createElement('div')
-    editorCell.classList.add('s-StringEditor')
-    expect(isEditable.call(controller, editorCell)).toBe(true)
-
-    const nonEditorCell = document.createElement('div')
-    nonEditorCell.classList.add('foo', 'editor', 's-something')
-    expect(isEditable.call(controller, nonEditorCell)).toBe(false)
-  })
+  // The prior `isEditableCell matches the s-*Editor regex` test was
+  // removed in round-7 #6: editor identification is now marker-based
+  // (data-idevs-cell-editor) via `findEditorChild`, not regex-on-className.
+  // See the "row-change cleanup finds editor via marker" test below
+  // for the replacement contract.
 })
 
 describe('IdevsGridEditController — custom renderer dispatch + XSS regression', () => {
@@ -684,6 +674,54 @@ describe('IdevsGridEditController — editor marker + controller-managed toggle-
     // Marked editor child is gone; with-editor class is stripped.
     expect(targetCell.querySelector('[data-idevs-cell-editor]')).toBeNull()
     expect(targetCell.classList.contains('with-editor')).toBe(false)
+  })
+
+  it('row-change cleanup removes a MARKED editor that is a later sibling after formatter (round-7 #6)', () => {
+    // Round 7 #6: prior row-change cleanup inspected ONLY
+    // `firstElementChild` and used the s-*Editor regex. After the
+    // marker contract, the editor may be at index 1+ (formatter at
+    // index 0, editor sibling after). The regex/firstChild check
+    // would miss it → editor left orphaned in the old cell on row
+    // navigation. Fix: use marker-based findEditorChild, same as
+    // toggle-off.
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: [{ field: 'name', visible: true, sourceItem: {} }],
+      items: [{ name: 'A' }, { name: 'B' }],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+
+    // Simulate the state where row 0 was previously edited: cell has
+    // formatter markup at index 0 + a marked editor at index 1.
+    const oldCell = document.createElement('div')
+    const formatter = document.createElement('span')
+    formatter.textContent = 'formatted'
+    oldCell.appendChild(formatter)
+    const markedEditor = document.createElement('input')
+    markedEditor.setAttribute('data-idevs-cell-editor', 'true')
+    oldCell.appendChild(markedEditor)
+    oldCell.classList.add('with-editor', 'text-white')
+
+    // Prime the controller's internal state so handleActiveCellChanged
+    // sees row 0 as the prior active cell.
+    ;(controller as unknown as { currentRow: number | null }).currentRow = 0
+    ;(controller as unknown as { currentCell: number | null }).currentCell = 0
+    slickGrid.getCellNode.mockImplementation((row: number) => (row === 0 ? oldCell : null))
+
+    // Drive the real handler: row 0 → row 1.
+    const handler = slickGrid.onActiveCellChanged.subscribers[0]
+    handler({}, { row: 1, cell: 0 })
+
+    // The marked editor MUST be removed even though it's not at
+    // firstElementChild. Formatter markup is preserved.
+    expect(oldCell.querySelector('[data-idevs-cell-editor]')).toBeNull()
+    expect(oldCell.contains(formatter)).toBe(true)
+    // Both classes stripped (symmetric with toggle-off + round-7 #5).
+    expect(oldCell.classList.contains('with-editor')).toBe(false)
+    expect(oldCell.classList.contains('text-white')).toBe(false)
   })
 
   it('toggle-off strips BOTH with-editor AND text-white classes (round-7 #5)', () => {

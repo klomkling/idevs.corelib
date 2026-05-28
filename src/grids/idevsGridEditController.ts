@@ -220,7 +220,12 @@ export class IdevsGridEditController<
    * next-loaded ServiceLookup editor. Consumed in `loadEditor`. */
   private criteria: unknown[] | null = null
 
-  private readonly editorPattern = /^s-.*Editor$/
+  // Round-7 #6: `editorPattern` + `isEditableCell` regex check removed.
+  // Editor identification is now marker-based via `findEditorChild`
+  // (data-idevs-cell-editor attribute), which is the canonical lookup
+  // used by every other cleanup path. The regex predates the marker
+  // contract and would miss editors that aren't `firstElementChild`
+  // (formatter-then-editor pattern).
 
   /** Custom cell-editor registry. The constructor primes this with the
    * built-in Integer/Decimal/Boolean/Lookup/ServiceLookup factories;
@@ -472,9 +477,9 @@ export class IdevsGridEditController<
     return this.previousCell(this.grid.slickGrid.getHeader().childElementCount)
   }
 
-  private isEditableCell(cell: HTMLElement): boolean {
-    return Array.from(cell.classList).some(className => this.editorPattern.test(className))
-  }
+  // `isEditableCell` (regex-on-className) removed in round-7 #6 —
+  // superseded by marker-based `findEditorChild`. See class-level
+  // editorPattern comment.
 
   private readonly handleActiveCellChanged = (_e: IEventData, args: ArgsCell): void => {
     if (this.destroyed) return
@@ -484,11 +489,15 @@ export class IdevsGridEditController<
       this.currentRow !== args.row
     ) {
       const slickCell = this.grid.slickGrid.getCellNode(this.currentRow, this.currentCell)
-      if (slickCell && slickCell.childElementCount > 0) {
-        const firstChild = slickCell.firstElementChild as HTMLElement | null
-        if (firstChild && this.isEditableCell(firstChild)) {
-          firstChild.remove()
-        }
+      if (slickCell) {
+        // Marker-based lookup (NOT `firstElementChild + s-*Editor regex`).
+        // After the round-7 editor-marker contract, the editor may be a
+        // LATER sibling — formatter markup at index 0, editor at
+        // index 1+. The regex check on firstElementChild would miss
+        // the editor in that case, leaving it orphaned in the old
+        // cell when the user navigated to a different row.
+        const editorChild = this.findEditorChild(slickCell)
+        if (editorChild) editorChild.remove()
         this.cleanupCellEditorClasses(slickCell)
       }
     }
