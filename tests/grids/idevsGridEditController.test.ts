@@ -661,6 +661,58 @@ describe('IdevsGridEditController — with-editor class toggle-off (PR-4b round-
     expect(target.childElementCount).toBe(0)
   })
 
+  it('public custom renderers can use the appendEditorChild callback without casts (round-7 #3)', () => {
+    // Round 7 #3: the round-7 #1 fix introduced `appendEditorChild` as
+    // a `protected` method, leaving public `registerCellEditor(...)`
+    // consumers unable to implement the documented contract without
+    // reaching into the class via `as unknown as { appendEditorChild(...) }`.
+    // The round-7 #3 fix threads the helper through the render params
+    // alongside `notifyCellChange` so consumers can use it directly.
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: [{ field: 'name', visible: true, sourceItem: { editorType: 'Custom.X' } }],
+      items: [{ name: 'A' }],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+
+    // The renderer below MUST type-check with strict TypeScript using
+    // only the public `IdevsCellEditorRender` signature — no `as`
+    // casts to reach the controller's private/protected surface.
+    const renderer: IdevsCellEditorRender = ({ target, appendEditorChild }) => {
+      // Use the callback from params, NOT a raw `target.appendChild`.
+      const input = document.createElement('input')
+      input.value = 'mounted-via-callback'
+      appendEditorChild(input)
+      void target // satisfy lint: `target` not directly written-to here
+    }
+    controller.registerCellEditor('Custom.X', renderer)
+
+    const targetCell = document.createElement('div')
+    // Pre-populate with formatter markup to confirm the callback
+    // doesn't accidentally strip it.
+    const formatter = document.createElement('span')
+    targetCell.appendChild(formatter)
+    slickGrid.getCellNode.mockReturnValue(targetCell)
+
+    const clickHandler = slickGrid.onClick.subscribers[0]
+    clickHandler(
+      { target: targetCell } as unknown as Event,
+      { row: 0, cell: 0, grid: slickGrid } as Record<string, unknown>,
+    )
+
+    // The callback-appended child carries the editor marker so the
+    // controller can find it for focus / styling / toggle-off.
+    const marked = targetCell.querySelector('[data-idevs-cell-editor="true"]')
+    expect(marked).not.toBeNull()
+    expect((marked as HTMLInputElement).value).toBe('mounted-via-callback')
+    // Formatter still present alongside (not stripped).
+    expect(targetCell.contains(formatter)).toBe(true)
+    expect(targetCell.classList.contains('with-editor')).toBe(true)
+  })
+
   it('loadEditor renders into a cell that has unmarked formatter markup (round-7 #1)', () => {
     // End-to-end regression: a SlickGrid cell with formatter markup
     // pre-populated (the common case for typed-value cells) must

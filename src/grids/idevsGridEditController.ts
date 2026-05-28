@@ -121,13 +121,15 @@ export type IdevsGridEditControllerOptions<
  * `target`'s existing first child if `target.childElementCount > 0`).
  *
  * Inputs:
- *   - `target`: the cell DOM element. Render via the controller's
- *     `appendEditorChild(target, node)` helper (NOT a raw
- *     `target.appendChild(...)`) so the controller can later
+ *   - `target`: the cell DOM element. Render via the
+ *     `appendEditorChild(node)` callback in this params object (NOT
+ *     a raw `target.appendChild(...)`) so the controller can later
  *     distinguish your editor node from any formatter markup that
  *     the host grid put inside the same cell. Custom renderers that
  *     `target.appendChild(...)` directly will work the FIRST time
- *     but will be treated as a toggle-off on the next click.
+ *     but will be treated as a toggle-off on the next click (the
+ *     controller can't tell their child apart from formatter
+ *     markup without the marker the helper applies).
  *   - `item`: the data row (the editor mutates this in place on commit).
  *   - `args`: SlickGrid's cell context for the active edit.
  *   - `column`: SlickGrid's column definition (carries `sourceItem` /
@@ -142,6 +144,14 @@ export type IdevsGridEditControllerOptions<
  *     already cleared its own copy.
  *   - `notifyCellChange()`: call after writing to `item[column.field]`
  *     to propagate the change to the host grid.
+ *   - `appendEditorChild(child)`: append a DOM node into `target` AND
+ *     tag it with the controller's editor marker so it can later be
+ *     identified for focus, the `with-editor` CSS class, and
+ *     toggle-off cleanup. The marker attribute itself is an
+ *     implementation detail — consumers should treat this callback
+ *     as the canonical mount path. Equivalent to the protected
+ *     `appendEditorChild(target, child)` instance method that
+ *     built-in renderers use internally.
  */
 export type IdevsCellEditorRender = (params: {
   target: HTMLElement
@@ -150,6 +160,7 @@ export type IdevsCellEditorRender = (params: {
   column: GridColumnWithField
   criteria: unknown[] | null
   notifyCellChange(): void
+  appendEditorChild(child: HTMLElement): void
 }) => void
 
 type SlickEventEmitter = {
@@ -573,25 +584,26 @@ export class IdevsGridEditController<
     // `column` is narrowed to `GridColumnWithField` by the `hasField`
     // type predicate above — TypeScript flows the narrowing into the
     // renderer dispatch automatically, no `as` cast required.
+    const renderParams = {
+      target: targetElement,
+      item,
+      args,
+      column,
+      criteria,
+      notifyCellChange: () => this.notifyCellChange(args, item),
+      // Bound closure exposing the protected `appendEditorChild` helper
+      // to public custom-renderer authors. Without this, consumers
+      // calling `registerCellEditor(...)` couldn't implement the
+      // documented marker-based contract because the protected
+      // instance method + private marker attr aren't reachable from
+      // outside the class.
+      appendEditorChild: (child: HTMLElement) => this.appendEditorChild(targetElement, child),
+    }
     if (render) {
-      render({
-        target: targetElement,
-        item,
-        args,
-        column,
-        criteria,
-        notifyCellChange: () => this.notifyCellChange(args, item),
-      })
+      render(renderParams)
     } else {
       // Fallback: plain string editor.
-      this.renderStringEditor({
-        target: targetElement,
-        item,
-        args,
-        column,
-        criteria,
-        notifyCellChange: () => this.notifyCellChange(args, item),
-      })
+      this.renderStringEditor(renderParams)
     }
 
     // Boolean is a click-to-toggle on an in-cell span (no editor child),
@@ -683,6 +695,12 @@ export class IdevsGridEditController<
 
   // ---- Built-in editor factories. Arrow-property so `this` binding
   //      survives the registry's stable function reference. ----
+
+  // Built-in renderers use the protected `this.appendEditorChild(target, ...)`
+  // method directly because they're inside the class. Public custom
+  // renderers registered via `registerCellEditor(...)` use the
+  // `appendEditorChild(node)` callback delivered via the params object
+  // — see the `IdevsCellEditorRender` type's JSDoc.
 
   private readonly renderIntegerEditor: IdevsCellEditorRender = ({
     target,
