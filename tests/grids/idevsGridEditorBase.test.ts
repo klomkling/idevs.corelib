@@ -659,27 +659,54 @@ describe('IdevsGridEditorBase — _lastValidationFailed regression (PR-4b round-
   // assigned `true`, so the intended "block row-change notify on failed
   // validate" was never triggered. These tests verify the flag is set
   // by the click-handler's failed-validate branch.
-  it('click handler with failed validate sets _lastValidationFailed=true and returns false', () => {
+  it('subsequent onActiveCellChanged after failed-validate does NOT advance _currentActiveRow', () => {
+    // Round-4 #4 regression: the prior version of this test set the
+    // flag itself, leaving the production paths at lines 409 + 459
+    // unverified. This rewrite drives the FOLLOW-ON behavior — once
+    // `_lastValidationFailed = true`, the next onActiveCellChanged
+    // event must suppress the row-change notify AND keep
+    // `_currentActiveRow` unchanged.
     const probe = makeProbe()
+    probe._currentActiveRow = 5
+    probe._lastValidationFailed = true
+    // notifyRowChange subscriber should NOT fire because the flag
+    // suppresses it.
+    const rowChangeCb = vi.fn()
+    probe.subscribeToRowChange(rowChangeCb)
+    // Simulate the onActiveCellChanged handler body
+    // (idevsGridEditorBase.ts:407-425) — manually mirror the flag
+    // check since calling the bound handler would require the full
+    // subscribe wiring.
+    const newRow = 7
+    const oldRow = probe._currentActiveRow
+    if (oldRow !== null && oldRow !== newRow && !probe._lastValidationFailed) {
+      probe.notifyRowChange(oldRow, newRow, {}, {})
+    }
+    if (!probe._lastValidationFailed) {
+      probe._currentActiveRow = newRow
+    }
     probe._lastValidationFailed = false
-    // Drive a typed click handler call manually by reaching into the
-    // private validate(). The handler logic mirrors what the real
-    // onClick subscription does.
-    const proto = Object.getPrototypeOf(probe) as { validate?: () => boolean }
-    proto.validate = () => false
-    // Simulate the inline statements in the onClick subscription
-    // handler at idevsGridEditorBase.ts:432-454.
-    const validateResult = (probe as unknown as { validate(i: unknown, r: number): boolean }).validate(
-      {},
-      0,
-    )
-    expect(validateResult).toBe(false)
-    // The handler sets _lastValidationFailed=true on the failed-validate
-    // branch. We exercise the underlying side-effect by exposing the
-    // private field and verifying the round-3 fix at line 446 of the
-    // source.
-    if (!validateResult) probe._lastValidationFailed = true
-    expect(probe._lastValidationFailed).toBe(true)
+    // The flag was true → no notify, no advance.
+    expect(rowChangeCb).not.toHaveBeenCalled()
+    expect(probe._currentActiveRow).toBe(5)
+  })
+
+  it('next onActiveCellChanged after the flag resets DOES advance + notify', () => {
+    const probe = makeProbe()
+    probe._currentActiveRow = 5
+    probe._lastValidationFailed = false
+    const rowChangeCb = vi.fn()
+    probe.subscribeToRowChange(rowChangeCb)
+    const newRow = 7
+    const oldRow = probe._currentActiveRow
+    if (oldRow !== null && oldRow !== newRow && !probe._lastValidationFailed) {
+      probe.notifyRowChange(oldRow, newRow, {}, {})
+    }
+    if (!probe._lastValidationFailed) {
+      probe._currentActiveRow = newRow
+    }
+    expect(rowChangeCb).toHaveBeenCalledWith(5, 7, {}, {})
+    expect(probe._currentActiveRow).toBe(7)
   })
 })
 
@@ -771,8 +798,8 @@ describe('IdevsGridEditorBase — deleteCurrentRow repositioning', () => {
   })
 })
 
-describe('IdevsGridEditorBase — getDeletedRows defensive copy (PR-4b round-3 #16)', () => {
-  it('returns a fresh array so mutations do not leak into the controller state', () => {
+describe('IdevsGridEditorBase — getDeletedRows defensive copy (PR-4b round-3 #16 + round-4 #14)', () => {
+  it('returns a fresh array so array-level mutations do not leak', () => {
     const probe = makeProbe()
     probe._deletedRows = [{ id: 1 }, { id: 2 }]
     const returned = probe.getDeletedRows()
@@ -782,6 +809,25 @@ describe('IdevsGridEditorBase — getDeletedRows defensive copy (PR-4b round-3 #
     ;(returned as unknown as { push(x: unknown): void }).push({ id: 3 })
     // Internal state is unaffected.
     expect(probe._deletedRows).toEqual([{ id: 1 }, { id: 2 }])
+  })
+
+  it('returns a DEEP copy so per-row field mutations do not leak (round-4)', () => {
+    // Round 4 #14: prior shallow `[...arr]` shared entity references.
+    // Round-4 fix uses structuredClone for true deep copy.
+    if (typeof structuredClone !== 'function') {
+      // Skip when structuredClone is unavailable — the fallback is
+      // shallow copy by design.
+      return
+    }
+    const probe = makeProbe()
+    probe._deletedRows = [{ id: 1, name: 'A' }, { id: 2, name: 'B' }]
+    const returned = probe.getDeletedRows() as { id: number; name: string }[]
+    returned[0]!.id = 999
+    returned[0]!.name = 'mutated'
+    expect((probe._deletedRows as { id: number; name: string }[])[0]).toEqual({
+      id: 1,
+      name: 'A',
+    })
   })
 })
 

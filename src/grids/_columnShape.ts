@@ -33,16 +33,29 @@
  */
 
 /**
+ * Editor constructor shape used for narrowing `editorType` without
+ * importing the real `EditorClass` from the nested-corelib sleekgrid
+ * copy (which would re-introduce the duplicate-type incompatibility).
+ * Structural minimum: any function-like value invokable as `new`.
+ */
+export type GridEditorCtor = new (...args: never[]) => unknown
+
+/**
  * Subset of Serenity's `PropertyItem` that we actually consume from
- * `Column.sourceItem`. `editorType` is intentionally `unknown` to stay
- * structurally assignable from Serenity's wider
- * `string | EditorClass | PromiseLike<EditorClass>` union; narrow at
- * the use site with `typeof === 'string'`.
+ * `Column.sourceItem`.
+ *
+ * `editorType` is typed as the union it really takes in Serenity
+ * (`string | EditorClass | PromiseLike<EditorClass>`) so consumers
+ * don't need to widen to `unknown`. The dispatcher narrows to the
+ * string case via `typeof === 'string'`. The union stays structurally
+ * assignable from Serenity's `PropertyItem.editorType` because the
+ * latter's `EditorClass` is itself a `new (...) => unknown`-shaped
+ * value, satisfying `GridEditorCtor`.
  */
 export type GridColumnSourceItem = {
   readOnly?: boolean
   required?: boolean
-  editorType?: unknown
+  editorType?: string | GridEditorCtor | PromiseLike<GridEditorCtor>
   editorParams?: Record<string, unknown>
 }
 
@@ -57,7 +70,18 @@ export type GridColumn = {
   cssClass?: string
   /** Editor constructor reference. Typed `unknown` since the duplicate
    * sleekgrid resolution makes the real `EditorClass` non-assignable
-   * across module boundaries; consumers only check truthiness. */
+   * across module boundaries; consumers check truthiness (`!!col.editor`)
+   * — NOT `!== undefined` (which admits `null` / `false`). */
   editor?: unknown
   sourceItem?: GridColumnSourceItem
 }
+
+/**
+ * Variant of `GridColumn` where `field` is guaranteed defined. The
+ * `IdevsGridEditController` dispatcher checks `column.field` before
+ * invoking a renderer (a column without `field` writes to
+ * `item["undefined"]` silently); the renderer signature uses this
+ * narrowed type so the implementation doesn't need `column.field as string`
+ * casts at every write site.
+ */
+export type GridColumnWithField = GridColumn & { field: string }

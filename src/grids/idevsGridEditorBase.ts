@@ -115,6 +115,19 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
    * Snapshot of `slickGrid.getOptions()` taken in the constructor.
    * Captured once so we can read `editable` / `autoEdit` without
    * re-calling getOptions on every event tick.
+   *
+   * **Lifecycle constraint:** if a consumer calls
+   * `slickGrid.setOptions({ editable: false })` or
+   * `setOptions({ autoEdit: <toggle> })` AFTER construction, this
+   * snapshot does NOT refresh — the controller stays bound to the
+   * original onClick/onDblClick emitter. Consumers who need to toggle
+   * editability at runtime should `destroy()` + recreate the grid
+   * widget rather than mutating SlickGrid options in place. The twin
+   * sibling `IdevsGridEditController` has a similar constraint with
+   * the same documented escape hatch.
+   *
+   * A future refactor could re-bind via a `refreshGridOptions()`
+   * method; deferred until a consumer surfaces the need.
    */
   private readonly _opts: ReturnType<this['slickGrid']['getOptions']>
 
@@ -146,9 +159,20 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
 
   getDeletedRows(): readonly TEntity[] {
     // Defensive copy: `readonly` is a TypeScript-only marker; the runtime
-    // value is a real array and callers could `(arr as TEntity[]).push(...)`
-    // to mutate the internal state. Returning a fresh slice each call
-    // keeps the contract enforceable at runtime too.
+    // value is a real array and callers could mutate the internal state
+    // via the returned reference.
+    //
+    // Uses `structuredClone` for a DEEP copy so per-row field mutations
+    // also don't leak (e.g. `getDeletedRows()[0].id = 999` no longer
+    // corrupts `_deletedRows[0]`). Falls back to a shallow spread if
+    // structuredClone is unavailable (older runtimes / specific jsdom
+    // builds without the polyfill) — in that fallback case, callers
+    // mutating per-row fields would still see the leak, but
+    // `structuredClone` has been a baseline since Node 17 / Chromium
+    // 98 / Firefox 94 so this is rare in practice.
+    if (typeof structuredClone === 'function') {
+      return structuredClone(this._deletedRows) as TEntity[]
+    }
     return [...this._deletedRows]
   }
 
@@ -525,7 +549,11 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
     const row = this.view.getLength() - 1
     const firstEditableCell = this.slickGrid
       .getColumns()
-      .findIndex(col => col.editor !== undefined && col.visible !== false)
+      // Truthiness check (NOT `!== undefined`) so columns with explicit
+      // `editor: null` / `editor: false` (some Serenity column factories
+      // emit these to signal "no editor configured") are treated as
+      // non-editable.
+      .findIndex(col => !!col.editor && col.visible !== false)
     this.slickGrid.setActiveCell(row, firstEditableCell > -1 ? firstEditableCell : 0)
     this.slickGrid.scrollRowIntoView(row, true)
     this.slickGrid.editActiveCell()
@@ -729,8 +757,9 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
     let lastEditableCellIndex = -1
     for (let i = columns.length - 1; i >= 0; i--) {
       const col = columns[i]
+      // Truthiness check — see addButtonClick for rationale.
       if (
-        col.editor !== undefined &&
+        !!col.editor &&
         col.visible !== false &&
         !col.cssClass?.includes('slick-reorder-cell')
       ) {
@@ -831,7 +860,10 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
   private isCellEditable(_row: number, cell: number, columns: GridColumnArr): boolean {
     const column = columns[cell]
     if (!column) return false
-    if (column.editor === undefined || column.visible === false) return false
+    // Falsy check (NOT `=== undefined`) so columns with explicit
+    // `editor: null` / `editor: false` are non-editable. See
+    // addButtonClick for the realistic scenario.
+    if (!column.editor || column.visible === false) return false
     if (column.cssClass?.includes('slick-reorder-cell')) return false
     const sourceItem = column.sourceItem as { readOnly?: boolean } | undefined
     if (sourceItem?.readOnly) return false

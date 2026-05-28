@@ -652,6 +652,117 @@ describe('IdevsGridEditController — with-editor class toggle-off (PR-4b round-
   })
 })
 
+describe('IdevsGridEditController — refreshColumnSnapshot behavior (PR-4b round-4 #7)', () => {
+  // Round 4 #7: prior tests covered the staleness fix indirectly (the
+  // class field was no longer `readonly`), but no test actually
+  // exercised the refresh. A refactor that re-introduces a cached
+  // `visibleColumns` would not fail any other test. This test mutates
+  // `slickGrid.getColumns` between handleKeyDown invocations and
+  // asserts the snapshot reflects the change.
+  it('handleKeyDown picks up column changes between calls', () => {
+    const initialCols = [{ field: 'a', visible: true, sourceItem: {} }]
+    const updatedCols = [
+      { field: 'a', visible: true, sourceItem: {} },
+      { field: 'b', visible: true, sourceItem: {} },
+    ]
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: initialCols,
+      items: [{ a: 1 }, { a: 2 }],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    // Initial state: visibleColumns has 1 entry.
+    const internal = controller as unknown as { visibleColumns: unknown[] }
+    expect(internal.visibleColumns.length).toBe(1)
+
+    // Host-driven setColumns simulated.
+    slickGrid.getColumns = vi.fn(() => updatedCols)
+    // Drive handleKeyDown (a Tab) — should call refreshColumnSnapshot.
+    const keyHandler = slickGrid.onKeyDown.subscribers[0]
+    keyHandler(
+      { key: 'Tab', shiftKey: false, preventDefault: () => {}, stopImmediatePropagation: () => {} },
+      { row: 0, cell: 0 } as Record<string, unknown>,
+    )
+    // After the keydown, visibleColumns must reflect the updated column list.
+    expect(internal.visibleColumns.length).toBe(2)
+  })
+
+  it('constructor takes the initial snapshot BEFORE wiring subscribers (PR-4b round-4 #2)', () => {
+    // Round 4 #2: if any handler fires synchronously inside
+    // `.subscribe()` (test doubles, some SlickGrid builds), nav
+    // primitives would throw on `undefined.findIndex`. Fix: snapshot
+    // before subscribe.
+    //
+    // Verify by recording the call order of `getColumns()` (called
+    // inside refreshColumnSnapshot) vs the first `.subscribe()`. The
+    // first getColumns call MUST come before the first subscribe.
+    const callOrder: string[] = []
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: [{ field: 'a', visible: true, sourceItem: {} }],
+    })
+    const originalGetColumns = slickGrid.getColumns
+    slickGrid.getColumns = vi.fn(() => {
+      callOrder.push('getColumns')
+      return originalGetColumns()
+    })
+    const originalSubscribe = slickGrid.onClick.subscribe.bind(slickGrid.onClick)
+    slickGrid.onClick.subscribe = function (h) {
+      callOrder.push('subscribe')
+      originalSubscribe(h)
+    }
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    expect(callOrder[0]).toBe('getColumns')
+    // The first subscribe must come AFTER getColumns. (We don't care
+    // about exact later positions — just that the snapshot is taken
+    // before any subscription wiring.)
+    expect(callOrder.indexOf('getColumns')).toBeLessThan(callOrder.indexOf('subscribe'))
+  })
+})
+
+describe('IdevsGridEditController — header data-id null-collision (PR-4b round-4 #3)', () => {
+  // Round 4 #3: nextCell/previousCell `findIndex(... === field)` where
+  // `field = null` and multiple visibleColumns have undefined `field`
+  // would match the first such entry. Fix: skip headers with no
+  // data-id.
+  it('nextCell skips headers without data-id (selection / reorder columns)', () => {
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      columns: [
+        { visible: true }, // selection-like column, no field, no data-id
+        { field: 'a', visible: true, sourceItem: {} },
+        { field: 'b', visible: true, sourceItem: {} },
+      ],
+    })
+    // The makeFakeGrid helper attaches `data-id` only when col.field is
+    // set, so col[0] has NO data-id. Manually verify the header DOM
+    // matches that assumption.
+    const header = slickGrid.getHeader()
+    expect(header.children[0].getAttribute('data-id')).toBeNull()
+    expect(header.children[1].getAttribute('data-id')).toBe('a')
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const nextCell = (controller as unknown as { nextCell(i: number): number }).nextCell
+    // From cell -1, the first editable header is index 1 ('a'). The
+    // null-data-id index 0 must be skipped.
+    expect(nextCell.call(controller, -1)).toBe(1)
+  })
+})
+
+describe('IdevsGridEditController — non-thenable openDialogFor warn (PR-4b round-4 #13)', () => {
+  // Not applicable on IdevsGridEditController — openDialogFor lives on
+  // IdevsSearchGrid. Test moved to idevsSearchGrid.test.ts to keep
+  // test-suite-to-source mapping clean.
+  it.skip('placeholder — see idevsSearchGrid.test.ts', () => {})
+})
+
 describe('IdevsGridEditController — generic-parameterized usage compiles (PR-4b round-3 #24)', () => {
   // The class was made generic (`<TGrid extends EntityGrid<any, any> = ...>`)
   // in round 3. A consumer can now instantiate with their own grid

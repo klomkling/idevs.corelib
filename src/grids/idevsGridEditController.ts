@@ -8,7 +8,7 @@ import {
   StringEditor,
 } from '@serenity-is/corelib'
 import type { ArgsCell, IEventData } from '@serenity-is/sleekgrid'
-import type { GridColumn } from './_columnShape'
+import type { GridColumn, GridColumnWithField } from './_columnShape'
 
 // Re-export the local structural shape used to be defined inline here.
 // See _columnShape.ts for the duplicate-sleekgrid rationale and the
@@ -117,7 +117,11 @@ export type IdevsGridEditControllerOptions<
  *   - `item`: the data row (the editor mutates this in place on commit).
  *   - `args`: SlickGrid's cell context for the active edit.
  *   - `column`: SlickGrid's column definition (carries `sourceItem` /
- *     `editorParams` from the Serenity descriptor pipeline).
+ *     `editorParams` from the Serenity descriptor pipeline). Typed as
+ *     `GridColumnWithField` because the dispatcher guarantees a
+ *     non-empty `column.field` before invoking the renderer — so
+ *     `item[column.field] = ...` works without a `column.field as string`
+ *     cast.
  *   - `criteria`: any single-shot criteria queued by
  *     `onActiveCellPositionChanged` for this cell. Consume by setting it
  *     on the editor's options before constructing — the controller has
@@ -129,7 +133,7 @@ export type IdevsCellEditorRender = (params: {
   target: HTMLElement
   item: Record<string, unknown>
   args: ArgsCell
-  column: GridColumn
+  column: GridColumnWithField
   criteria: unknown[] | null
   notifyCellChange(): void
 }) => void
@@ -168,11 +172,12 @@ export class IdevsGridEditController<
 > {
   private readonly grid: TGrid
   private allColumns: GridColumn[]
-  // visibleColumns is NOT `readonly` — re-derived on every loadEditor /
-  // navigation so column-picker / setColumns() / setVisible() changes on
-  // the host grid don't leave the navigation primitives reading stale
-  // state. `maxRows` is also re-read inline (this.grid.getItems().length)
-  // at each use site for the same reason.
+  // visibleColumns is NOT `readonly` — re-derived via refreshColumnSnapshot()
+  // before keyboard navigation so column-picker / setColumns() /
+  // setVisible() changes on the host grid don't leave the navigation
+  // primitives reading stale state. (Items count is read inline at
+  // each navigation site too — see `const maxRows = this.grid.getItems().length`
+  // in handleKeyDown.)
   private visibleColumns: GridColumn[]
   private currentRow: number | null = null
   private currentCell: number | null = null
@@ -215,6 +220,15 @@ export class IdevsGridEditController<
     this.registerCellEditor('Lookup', this.renderLookupEditor)
     this.registerCellEditor('ServiceLookup', this.renderServiceLookupEditor)
 
+    // Take the initial column snapshot BEFORE wiring subscribers so any
+    // handler that fires synchronously during `.subscribe()` (test
+    // doubles, or a SlickGrid build that delivers a buffered event on
+    // subscription) sees a populated `visibleColumns` / `allColumns`
+    // pair. Without this ordering, `nextCell` / `isReadonlyCell` would
+    // throw on `undefined.findIndex` / `[idx]`. Refreshed lazily after
+    // construction via subsequent navigation-path calls.
+    this.refreshColumnSnapshot()
+
     if (this.editable) {
       if (this.autoEdit) {
         this.subscribe(this.grid.slickGrid.onClick as unknown as SlickEventEmitter, (e, args) =>
@@ -237,16 +251,19 @@ export class IdevsGridEditController<
       this.grid.slickGrid.onActiveCellPositionChanged as unknown as SlickEventEmitter,
       (_e, args) => this.handleActiveCellPositionChanged(args),
     )
-
-    // Initial snapshot. Refreshed lazily — see refreshColumnSnapshot()
-    // and inline `this.grid.getItems().length` reads at use sites.
-    this.refreshColumnSnapshot()
   }
 
   /**
    * Re-read columns from SlickGrid. Called from the constructor and
-   * before navigation / dispatch so column-picker, dynamic visibility,
-   * and host-driven setColumns() changes are picked up.
+   * from `handleKeyDown` before keyboard navigation, so column-picker /
+   * dynamic visibility / host-driven `setColumns()` changes are picked
+   * up for nav.
+   *
+   * The editor dispatch path (`loadEditor`) does NOT call this — it
+   * re-reads `getColumns()` inline for `allColumns` only and never
+   * consults `visibleColumns` directly. That's intentional: dispatch
+   * uses `args.cell` (all-columns index) to look up the cell, while
+   * navigation walks visible-columns to skip read-only / hidden cells.
    */
   private refreshColumnSnapshot(): void {
     // See loadEditor() for the duplicate-sleekgrid cast rationale.
@@ -355,6 +372,15 @@ export class IdevsGridEditController<
     for (let i = cell + 1; i < headers.length; i++) {
       const header = headers[i] as HTMLElement
       const field = header.getAttribute('data-id')
+      // Skip headers without a `data-id` (selection-checkbox column,
+      // row-reorder handle, action columns). Without this guard,
+      // `findIndex(... column.field === null ...)` would never match
+      // (so the iteration continued), BUT multiple no-field columns in
+      // visibleColumns could still collide by both having undefined
+      // `field` — `findIndex` would return the first match and
+      // `isReadonlyCell(idx)` would read the WRONG column's readOnly
+      // state.
+      if (!field) continue
       const idx = this.visibleColumns.findIndex(column => column.field === field)
       if (idx >= 0 && !this.isReadonlyCell(idx)) {
         return i
@@ -368,6 +394,8 @@ export class IdevsGridEditController<
     for (let i = cell - 1; i >= 0; i--) {
       const header = headers[i] as HTMLElement
       const field = header.getAttribute('data-id')
+      // See nextCell for the null-field skip rationale.
+      if (!field) continue
       const idx = this.visibleColumns.findIndex(column => column.field === field)
       if (idx >= 0 && !this.isReadonlyCell(idx)) {
         return i
@@ -501,12 +529,17 @@ export class IdevsGridEditController<
     const criteria = this.criteria
     this.criteria = null
 
+    // `column.field` is narrowed to `string` by the early-return above,
+    // but TS doesn't carry that into the `column` variable's type as a
+    // whole — assert via the dedicated `GridColumnWithField` alias so
+    // the renderer signature can drop its `column.field as string` casts.
+    const columnWithField = column as GridColumnWithField
     if (render) {
       render({
         target: targetElement,
         item,
         args,
-        column,
+        column: columnWithField,
         criteria,
         notifyCellChange: () => this.notifyCellChange(args, item),
       })
@@ -516,7 +549,7 @@ export class IdevsGridEditController<
         target: targetElement,
         item,
         args,
-        column,
+        column: columnWithField,
         criteria,
         notifyCellChange: () => this.notifyCellChange(args, item),
       })
@@ -571,7 +604,7 @@ export class IdevsGridEditController<
     integerEditor.change(e => {
       const stringValue = (e.target as HTMLInputElement).value
       const parsed = parseInt(stringValue || '0', 10)
-      item[column.field as string] = Number.isFinite(parsed) ? parsed : 0
+      item[column.field] = Number.isFinite(parsed) ? parsed : 0
       // XSS hardening: textContent (source used innerHTML).
       target.textContent = stringValue
       notifyCellChange()
@@ -593,7 +626,7 @@ export class IdevsGridEditController<
       const stringValue = (e.target as HTMLInputElement).value
       const cleanValue = stringValue.replace(/,/g, '')
       const numericValue = cleanValue ? parseFloat(cleanValue) : 0
-      item[column.field as string] = Number.isFinite(numericValue) ? numericValue : 0
+      item[column.field] = Number.isFinite(numericValue) ? numericValue : 0
       // Locale 'en-US' is a deliberate behavior-parity choice with the
       // PowerACC source; revisit once a configurable locale ships
       // through `IdevsGridEditControllerOptions`.
@@ -618,13 +651,14 @@ export class IdevsGridEditController<
     // Boolean is a click-to-toggle on a span — no editor widget to
     // instantiate or toggle-off behavior to replicate.
     //
-    // The readonly check that lived here previously (`isReadonlyCell(args.cell)`)
-    // was redundant — loadEditor already filters readOnly columns at
-    // line 469 via `column.sourceItem.readOnly` BEFORE dispatching here,
-    // AND it used `args.cell` (all-columns index) against the
-    // visibleColumns array (visible-only index), so for any hidden
-    // column it was checking the wrong row. Dropped.
-    if (!column.field) return
+    // No `column.field` guard here: `IdevsCellEditorRender` types
+    // `column` as `GridColumnWithField` (field guaranteed non-empty
+    // string) because the dispatcher checks `column.field` before
+    // invoking any renderer. The earlier inline check that lived here
+    // was redundant after round-3 hoisted the guard.
+    //
+    // No `isReadonlyCell(args.cell)` either — loadEditor filters
+    // readOnly columns via `column.sourceItem.readOnly` BEFORE dispatch.
     const toggleTarget =
       target.tagName.toLowerCase() === 'span'
         ? target
@@ -654,7 +688,7 @@ export class IdevsGridEditController<
       changeSelect2: (handler: (e: Select2Event) => void) => void
     }).changeSelect2(e => {
       const val = e.originalEvent.val
-      item[column.field as string] = val
+      item[column.field] = val
       target.textContent = val === null || val === undefined ? '' : String(val)
       notifyCellChange()
     })
@@ -683,7 +717,7 @@ export class IdevsGridEditController<
     }).changeSelect2(e => {
       const originalEvent = e.originalEvent
       const addedSource = originalEvent.added?.source
-      item[column.field as string] = originalEvent.val
+      item[column.field] = originalEvent.val
       if (addedSource) {
         const idField = (editorParams as Record<string, unknown>).idField
         const textField = (editorParams as Record<string, unknown>).textField
@@ -709,7 +743,7 @@ export class IdevsGridEditController<
     ;(stringEditor as unknown as { value: unknown }).value = this.getCellValue(item, column)
     stringEditor.change(e => {
       const value = (e.target as HTMLInputElement).value
-      item[column.field as string] = value
+      item[column.field] = value
       // XSS hardening: textContent. The source's `target.innerHTML = value`
       // here was the most dangerous of the bunch — string editor values
       // are user-typed text, so embedded `<script>` or event-handler

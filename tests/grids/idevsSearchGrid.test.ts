@@ -454,6 +454,129 @@ describe('IdevsSearchGrid — editItem unhandled rejection regression (PR-4b rou
   })
 })
 
+describe('IdevsSearchGrid — handleEditItemError safe-wrap (PR-4b round-4 #6)', () => {
+  // Round 4 #6: if a subclass override of handleEditItemError throws,
+  // the secondary rejection should NOT become an unhandled rejection.
+  // Fix: safeHandleEditItemError wraps the override invocation in
+  // try/catch and falls back to a default notify + warn.
+  it('throwing handleEditItemError override is caught + warned, not propagated', async () => {
+    const probe = makeProbe()
+    probe._editPermission = ''
+    ;(probe as unknown as {
+      handleEditItemError: (e: unknown, id: unknown) => void
+    }).handleEditItemError = () => {
+      throw new Error('override blew up')
+    }
+    const corelib = await import('@serenity-is/corelib')
+    const authSpy = vi.spyOn(corelib.Authorization, 'hasPermission').mockReturnValue(true)
+    const rejected = Promise.reject(new Error('chunk-load failed'))
+    rejected.catch(() => {
+      /* swallow */
+    })
+    probe.getDialogType = () => rejected as unknown as Promise<unknown>
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      // Calling editItem must NOT throw even though the override
+      // throws. The safe-wrap downgrades the failure to a warn.
+      expect(() => probe.editItem('abc')).not.toThrow()
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('handleEditItemError override threw'),
+        expect.any(Error),
+      )
+    } finally {
+      authSpy.mockRestore()
+      warnSpy.mockRestore()
+    }
+  })
+})
+
+describe('IdevsSearchGrid — handleEditItemError phase param (PR-4b round-4 #12)', () => {
+  // Round 4 #12: the hook signature now distinguishes 'dialog-load'
+  // (transient — chunk-load) vs 'dialog-open' (terminal — dialog ctor
+  // throw / loadByIdAndOpenDialog reject). Overrides can branch on
+  // phase for retry behavior.
+  it('passes phase=dialog-load on .then-chain rejection', async () => {
+    const probe = makeProbe()
+    probe._editPermission = ''
+    const overrideSpy = vi.fn()
+    ;(probe as unknown as {
+      handleEditItemError: typeof overrideSpy
+    }).handleEditItemError = overrideSpy
+    const corelib = await import('@serenity-is/corelib')
+    const authSpy = vi.spyOn(corelib.Authorization, 'hasPermission').mockReturnValue(true)
+    const rejected = Promise.reject(new Error('chunk-load failed'))
+    rejected.catch(() => {
+      /* swallow */
+    })
+    probe.getDialogType = () => rejected as unknown as Promise<unknown>
+    try {
+      probe.editItem('id-1')
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(overrideSpy).toHaveBeenCalledTimes(1)
+      const [, , phase] = overrideSpy.mock.calls[0]!
+      expect(phase).toBe('dialog-load')
+    } finally {
+      authSpy.mockRestore()
+    }
+  })
+
+  it('passes phase=dialog-open on sync ctor throw', async () => {
+    const probe = makeProbe()
+    probe._editPermission = ''
+    const overrideSpy = vi.fn()
+    ;(probe as unknown as {
+      handleEditItemError: typeof overrideSpy
+    }).handleEditItemError = overrideSpy
+    const corelib = await import('@serenity-is/corelib')
+    const authSpy = vi.spyOn(corelib.Authorization, 'hasPermission').mockReturnValue(true)
+    const Throwing = function () {
+      throw new Error('ctor crashed')
+    } as unknown as () => unknown
+    probe.getDialogType = () => Throwing
+    try {
+      probe.editItem('id-2')
+      expect(overrideSpy).toHaveBeenCalledTimes(1)
+      const [, , phase] = overrideSpy.mock.calls[0]!
+      expect(phase).toBe('dialog-open')
+    } finally {
+      authSpy.mockRestore()
+    }
+  })
+})
+
+describe('IdevsSearchGrid — non-thenable loadByIdAndOpenDialog warn (PR-4b round-4 #13)', () => {
+  // Round 4 #13: if the dialog's loadByIdAndOpenDialog returns a
+  // primitive (misbehaving stub, upstream contract change), the
+  // dispatcher should warn but not crash. The user-gesture path is
+  // preserved.
+  it('warns when loadByIdAndOpenDialog returns a non-thenable, non-nullish value', async () => {
+    const probe = makeProbe()
+    probe._editPermission = ''
+    const corelib = await import('@serenity-is/corelib')
+    const authSpy = vi.spyOn(corelib.Authorization, 'hasPermission').mockReturnValue(true)
+    // Dialog ctor that returns a primitive from loadByIdAndOpenDialog.
+    const Misbehaving = function () {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return {
+        loadByIdAndOpenDialog: () => 'not-a-promise',
+      } as any
+    } as unknown as () => unknown
+    probe.getDialogType = () => Misbehaving
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(() => probe.editItem('id-x')).not.toThrow()
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('loadByIdAndOpenDialog returned non-thenable'),
+        'not-a-promise',
+      )
+    } finally {
+      authSpy.mockRestore()
+      warnSpy.mockRestore()
+    }
+  })
+})
+
 describe('IdevsSearchGrid — module export shape', () => {
   it('exports the abstract class as a constructor function with the methods on its prototype', () => {
     expect(typeof IdevsSearchGrid).toBe('function')

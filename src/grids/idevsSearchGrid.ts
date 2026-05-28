@@ -200,7 +200,9 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
   // signature) so the round-trip `grid.FilterKeys = grid.FilterKeys`
   // type-checks — the getter returns `Readonly<...>` and a strict-TS
   // consumer should not need to cast just to mirror state. The internal
-  // method spreads via Object.keys(...) which is safe on Readonly.
+  // method only READS the input via `Object.keys(...)` / `Object.entries(...)`
+  // (both safe on `Readonly<...>` values); the inner cast to mutable
+  // is purely to call the canonical signature, no mutation happens.
   set FilterKeys(filters: Readonly<Record<string, unknown>>) {
     this.setFilterKeys(filters as Record<string, unknown>)
   }
@@ -370,14 +372,39 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
         // handler to the same microtask hop, ensuring no transient
         // unhandled-rejection event fires for chunk-load / dynamic-import
         // failures on a code-split dialog module.
-        err => this.handleEditItemError(err, entityOrId),
+        err => this.safeHandleEditItemError(err, entityOrId, 'dialog-load'),
       )
       return
     }
     try {
       this.openDialogFor(dialogTypeOrPromise, entityOrId)
     } catch (err) {
-      this.handleEditItemError(err, entityOrId)
+      this.safeHandleEditItemError(err, entityOrId, 'dialog-open')
+    }
+  }
+
+  /**
+   * Wrap `handleEditItemError` so a throwing override doesn't become a
+   * secondary unhandled rejection (defeating the round-3 fix's intent).
+   * Logs the override failure at warn-level and falls back to a default
+   * `notifyError`.
+   */
+  private safeHandleEditItemError(
+    err: unknown,
+    entityOrId: string | number,
+    phase: 'dialog-load' | 'dialog-open',
+  ): void {
+    try {
+      this.handleEditItemError(err, entityOrId, phase)
+    } catch (handlerErr) {
+      // Override threw — log + fall back to a minimal user notification.
+      // The override's rejection is NOT propagated upward (would itself
+      // become an unhandled-rejection event in the .then callback path).
+      console.warn(
+        `[IdevsSearchGrid] handleEditItemError override threw (phase=${phase}):`,
+        handlerErr,
+      )
+      notifyError('Unable to open editor dialog.')
     }
   }
 
@@ -406,7 +433,19 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
     if (typeof resultThen === 'function') {
       ;(result as PromiseLike<unknown>).then(
         () => undefined,
-        err => this.handleEditItemError(err, entityOrId),
+        err => this.safeHandleEditItemError(err, entityOrId, 'dialog-open'),
+      )
+    } else if (result !== undefined && result !== null) {
+      // [Suggestion #13] Non-thenable, non-nullish return from
+      // loadByIdAndOpenDialog. Real Serenity returns Promise<void>; a
+      // primitive return here suggests a misbehaving stub or an
+      // upstream contract change. Log so the consumer can investigate
+      // without crashing the user-gesture path.
+      console.warn(
+        `[IdevsSearchGrid] loadByIdAndOpenDialog returned non-thenable for id=${String(
+          entityOrId,
+        )}:`,
+        result,
       )
     }
   }
@@ -416,14 +455,41 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
    * with a stable prefix so the failure is traceable to a user gesture.
    * Override in subclasses to integrate with consumer-specific error
    * channels.
+   *
+   * The `phase` parameter distinguishes:
+   *   - `'dialog-load'` — `getDialogType()` returned a Promise that
+   *     rejected. Typical: chunk-load failure, dynamic-import error,
+   *     code-split module 404. Generally transient; safe to retry.
+   *   - `'dialog-open'` — the dialog constructor threw, OR
+   *     `loadByIdAndOpenDialog`'s returned Promise rejected. Typical:
+   *     entity 404, validation rejection, dialog-ctor bug. Generally
+   *     not retryable from the same call site.
+   *
+   * Overrides that throw are caught by `safeHandleEditItemError` and
+   * downgraded to a console.warn + default notifyError — so an
+   * override does not need to be defensive about its own failure
+   * modes for the primary surface to stay correct.
+   *
+   * Backward compatibility: the `phase` parameter is added as the
+   * third positional arg with no default, but the signature also stays
+   * arity-1+2 compatible — JavaScript callers omitting `phase` see it
+   * as `undefined`, which is a structurally-valid (if narrowed-away)
+   * value the default impl doesn't read. Existing 2-arg overrides keep
+   * working.
    */
-  protected handleEditItemError(err: unknown, entityOrId: string | number): void {
+  protected handleEditItemError(
+    err: unknown,
+    entityOrId: string | number,
+    phase?: 'dialog-load' | 'dialog-open',
+  ): void {
     notifyError('Unable to open editor dialog.')
     // Structured warn for traceability of user-gesture-triggered dialog
     // failures (project policy: `no-console: warn`). Consumers can
     // override handleEditItemError to route elsewhere.
     console.warn(
-      `[IdevsSearchGrid] editItem(${String(entityOrId)}) failed to open dialog:`,
+      `[IdevsSearchGrid] editItem(${String(entityOrId)}) failed to open dialog${
+        phase ? ` (phase=${phase})` : ''
+      }:`,
       err,
     )
   }
