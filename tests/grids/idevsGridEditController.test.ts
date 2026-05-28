@@ -676,6 +676,94 @@ describe('IdevsGridEditController — editor marker + controller-managed toggle-
     expect(targetCell.classList.contains('with-editor')).toBe(false)
   })
 
+  it('same-row cell change cleans up the prior cell (round-7 #7 Tab regression)', () => {
+    // Round 7 #7: prior cleanup condition was `currentRow !== args.row`,
+    // so Tab from cell A to cell B in the SAME row skipped cleanup —
+    // cell A retained its marked editor + with-editor/text-white
+    // classes while cell B gained its own editor. User saw two
+    // editors active simultaneously. Fix: cleanup when EITHER row OR
+    // cell changes (not when both are equal — same-cell re-activation
+    // is handled by the loadEditor toggle-off).
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: [
+        { field: 'a', visible: true, sourceItem: {} },
+        { field: 'b', visible: true, sourceItem: {} },
+      ],
+      items: [{ a: 1, b: 2 }],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+
+    // Old cell (row 0, cell 0): formatter + marked editor + classes.
+    const cellA = document.createElement('div')
+    const formatterA = document.createElement('span')
+    cellA.appendChild(formatterA)
+    const markedA = document.createElement('input')
+    markedA.setAttribute('data-idevs-cell-editor', 'true')
+    cellA.appendChild(markedA)
+    cellA.classList.add('with-editor', 'text-white')
+
+    // New cell (row 0, cell 1): empty, will be activated.
+    const cellB = document.createElement('div')
+
+    // Prime: currentRow=0, currentCell=0 (we just left cell A).
+    ;(controller as unknown as { currentRow: number | null }).currentRow = 0
+    ;(controller as unknown as { currentCell: number | null }).currentCell = 0
+    slickGrid.getCellNode.mockImplementation((row: number, cell: number) => {
+      if (row === 0 && cell === 0) return cellA
+      if (row === 0 && cell === 1) return cellB
+      return null
+    })
+
+    // Drive the active-cell-changed handler with SAME row but new cell.
+    const handler = slickGrid.onActiveCellChanged.subscribers[0]
+    handler({}, { row: 0, cell: 1 })
+
+    // Cell A must be cleaned up — that's the round-7 #7 fix.
+    expect(cellA.querySelector('[data-idevs-cell-editor]')).toBeNull()
+    expect(cellA.classList.contains('with-editor')).toBe(false)
+    expect(cellA.classList.contains('text-white')).toBe(false)
+    // Formatter preserved (it wasn't a marked editor).
+    expect(cellA.contains(formatterA)).toBe(true)
+  })
+
+  it('same-cell re-activation does NOT trigger cleanup (round-7 #7 guard)', () => {
+    // Round 7 #7 inverse: when the active cell hasn't actually moved
+    // (currentRow === args.row && currentCell === args.cell), the
+    // handler must NOT clean up. Same-cell click is handled by the
+    // toggle-off path in `loadEditor`, not here.
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: [{ field: 'name', visible: true, sourceItem: {} }],
+      items: [{ name: 'A' }],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+
+    const cell = document.createElement('div')
+    const marked = document.createElement('input')
+    marked.setAttribute('data-idevs-cell-editor', 'true')
+    cell.appendChild(marked)
+    cell.classList.add('with-editor')
+
+    ;(controller as unknown as { currentRow: number | null }).currentRow = 0
+    ;(controller as unknown as { currentCell: number | null }).currentCell = 0
+    slickGrid.getCellNode.mockReturnValue(cell)
+
+    const handler = slickGrid.onActiveCellChanged.subscribers[0]
+    // Same row + same cell — should NOT cleanup.
+    handler({}, { row: 0, cell: 0 })
+
+    // Editor + class still present (cleanup did NOT run).
+    expect(cell.querySelector('[data-idevs-cell-editor]')).not.toBeNull()
+    expect(cell.classList.contains('with-editor')).toBe(true)
+  })
+
   it('row-change cleanup removes a MARKED editor that is a later sibling after formatter (round-7 #6)', () => {
     // Round 7 #6: prior row-change cleanup inspected ONLY
     // `firstElementChild` and used the s-*Editor regex. After the

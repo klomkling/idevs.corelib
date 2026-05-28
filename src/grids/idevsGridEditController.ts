@@ -483,10 +483,23 @@ export class IdevsGridEditController<
 
   private readonly handleActiveCellChanged = (_e: IEventData, args: ArgsCell): void => {
     if (this.destroyed) return
+    // Cleanup the prior cell when the active cell moves to a DIFFERENT
+    // cell — either a different row OR a different column in the same
+    // row (the Tab / shift-Tab / next-cell-click paths). Prior to
+    // round-7 #7 the condition was only `currentRow !== args.row`, so
+    // same-row navigation left the previous cell's marked editor
+    // mounted while the new cell gained its own editor — the user saw
+    // two editors active simultaneously.
+    //
+    // Same-cell re-activation (currentRow === args.row && currentCell
+    // === args.cell) is NOT a cleanup case — the controller-managed
+    // toggle-off in `loadEditor` handles that flow.
+    const isDifferentCell =
+      this.currentRow !== args.row || this.currentCell !== args.cell
     if (
       this.currentCell !== null &&
       this.currentRow !== null &&
-      this.currentRow !== args.row
+      isDifferentCell
     ) {
       const slickCell = this.grid.slickGrid.getCellNode(this.currentRow, this.currentCell)
       if (slickCell) {
