@@ -726,11 +726,15 @@ describe('IdevsGridEditController — refreshColumnSnapshot behavior (PR-4b roun
   })
 })
 
-describe('IdevsGridEditController — header data-id null-collision (PR-4b round-4 #3)', () => {
+describe('IdevsGridEditController — header data-id null-collision (PR-4b round-4 #3 + round-5 #3)', () => {
   // Round 4 #3: nextCell/previousCell `findIndex(... === field)` where
   // `field = null` and multiple visibleColumns have undefined `field`
   // would match the first such entry. Fix: skip headers with no
   // data-id.
+  //
+  // Round 5 #3: the original round-4 test only covered nextCell(-1)
+  // (start case). These additional tests cover middle-of-grid skip
+  // AND the previousCell path that previously had zero coverage.
   it('nextCell skips headers without data-id (selection / reorder columns)', () => {
     const { grid, slickGrid } = makeFakeGrid({
       editable: true,
@@ -754,6 +758,56 @@ describe('IdevsGridEditController — header data-id null-collision (PR-4b round
     // null-data-id index 0 must be skipped.
     expect(nextCell.call(controller, -1)).toBe(1)
   })
+
+  it('nextCell skips a no-field header mid-grid (round-5 #3)', () => {
+    // Layout: [a, no-field-action-col, b]. From cell=0 ('a'), next
+    // must skip the mid-grid no-data-id header and return 2.
+    const { grid } = makeFakeGrid({
+      editable: true,
+      columns: [
+        { field: 'a', visible: true, sourceItem: {} },
+        { visible: true }, // action column, no field, no data-id
+        { field: 'b', visible: true, sourceItem: {} },
+      ],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const nextCell = (controller as unknown as { nextCell(i: number): number }).nextCell
+    expect(nextCell.call(controller, 0)).toBe(2)
+  })
+
+  it('previousCell skips a no-field header (round-5 #3, previously untested path)', () => {
+    // Layout: [a, no-field-action-col, b]. From cell=2 ('b'), previous
+    // must skip the mid-grid no-data-id header and return 0.
+    const { grid } = makeFakeGrid({
+      editable: true,
+      columns: [
+        { field: 'a', visible: true, sourceItem: {} },
+        { visible: true }, // action column, no field, no data-id
+        { field: 'b', visible: true, sourceItem: {} },
+      ],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const previousCell = (controller as unknown as { previousCell(i: number): number })
+      .previousCell
+    expect(previousCell.call(controller, 2)).toBe(0)
+  })
+
+  it('previousCell from before-first-cell returns -1 when no editable preceding (round-5 #3)', () => {
+    const { grid } = makeFakeGrid({
+      editable: true,
+      columns: [{ field: 'a', visible: true, sourceItem: {} }],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const previousCell = (controller as unknown as { previousCell(i: number): number })
+      .previousCell
+    expect(previousCell.call(controller, 0)).toBe(-1)
+  })
 })
 
 describe('IdevsGridEditController — non-thenable openDialogFor warn (PR-4b round-4 #13)', () => {
@@ -761,6 +815,48 @@ describe('IdevsGridEditController — non-thenable openDialogFor warn (PR-4b rou
   // IdevsSearchGrid. Test moved to idevsSearchGrid.test.ts to keep
   // test-suite-to-source mapping clean.
   it.skip('placeholder — see idevsSearchGrid.test.ts', () => {})
+})
+
+describe('IdevsGridEditController — handleKeyDown try/catch (PR-4b round-5 #6)', () => {
+  // Round 5 #6: SlickGrid's notify() doesn't catch subscriber throws.
+  // If `slickGrid.getColumns()` (called inside refreshColumnSnapshot)
+  // throws on corrupted state, the throw would propagate up to the
+  // browser's event loop. Round-5 fix wraps the entire body in
+  // try/catch with a console.warn + early return.
+  it('contains a throw from refreshColumnSnapshot/getColumns and warns', () => {
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: [{ field: 'a', visible: true, sourceItem: {} }],
+      items: [{ a: 1 }],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    // Sabotage getColumns AFTER the constructor's initial snapshot
+    // (so construction succeeds), THEN trigger a keystroke.
+    slickGrid.getColumns = vi.fn(() => {
+      throw new Error('corrupted column state')
+    })
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const keyHandler = slickGrid.onKeyDown.subscribers[0]
+      // Production code wraps the body in try/catch — invocation must
+      // not throw to the caller.
+      expect(() =>
+        keyHandler(
+          { key: 'Tab', shiftKey: false, preventDefault: () => {}, stopImmediatePropagation: () => {} },
+          { row: 0, cell: 0 } as Record<string, unknown>,
+        ),
+      ).not.toThrow()
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('handleKeyDown threw'),
+        expect.any(Error),
+      )
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
 })
 
 describe('IdevsGridEditController — generic-parameterized usage compiles (PR-4b round-3 #24)', () => {

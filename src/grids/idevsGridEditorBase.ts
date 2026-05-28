@@ -163,15 +163,28 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
     // via the returned reference.
     //
     // Uses `structuredClone` for a DEEP copy so per-row field mutations
-    // also don't leak (e.g. `getDeletedRows()[0].id = 999` no longer
-    // corrupts `_deletedRows[0]`). Falls back to a shallow spread if
-    // structuredClone is unavailable (older runtimes / specific jsdom
-    // builds without the polyfill) — in that fallback case, callers
-    // mutating per-row fields would still see the leak, but
-    // `structuredClone` has been a baseline since Node 17 / Chromium
-    // 98 / Firefox 94 so this is rare in practice.
+    // also don't leak. Two fallback paths:
+    //
+    //   1. `structuredClone` unavailable (older runtimes, specific jsdom
+    //      builds without the polyfill) → shallow spread.
+    //   2. `structuredClone` throws `DataCloneError` (TEntity contains
+    //      functions, DOM refs, class-instance privates, or other
+    //      non-cloneable values) → log + shallow spread. Without the
+    //      try/catch the caller would see an unexplained DataCloneError
+    //      with no clue it originated in `getDeletedRows`.
+    //
+    // In the shallow-fallback paths, per-row field mutations would leak —
+    // documented trade-off for non-POJO entity shapes.
     if (typeof structuredClone === 'function') {
-      return structuredClone(this._deletedRows) as TEntity[]
+      try {
+        return structuredClone(this._deletedRows) as TEntity[]
+      } catch (cloneErr) {
+        console.warn(
+          '[IdevsGridEditorBase] getDeletedRows: structuredClone failed (non-cloneable TEntity?); returning shallow copy:',
+          cloneErr,
+        )
+        return [...this._deletedRows]
+      }
     }
     return [...this._deletedRows]
   }

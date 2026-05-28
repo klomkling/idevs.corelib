@@ -8,7 +8,7 @@ import {
   StringEditor,
 } from '@serenity-is/corelib'
 import type { ArgsCell, IEventData } from '@serenity-is/sleekgrid'
-import type { GridColumn, GridColumnWithField } from './_columnShape'
+import { hasField, type GridColumn, type GridColumnWithField } from './_columnShape'
 
 // Re-export the local structural shape used to be defined inline here.
 // See _columnShape.ts for the duplicate-sleekgrid rationale and the
@@ -330,41 +330,56 @@ export class IdevsGridEditController<
       this.enterKey = false
       return
     }
-    // Refresh column snapshot so navigation reflects any setColumns() /
-    // column-picker changes since the last call. Read items length
-    // inline (NOT a constructor snapshot) so added/deleted rows show
-    // up in the row-overflow clamp below.
-    this.refreshColumnSnapshot()
-    const maxRows = this.grid.getItems().length
-    let row = this.currentRow ?? 0
-    let cell = this.currentCell ?? 0
-    if (e.shiftKey) {
-      cell = this.previousCell(cell)
-      if (cell < 0) {
-        row--
-        if (row < 0) {
-          row = 0
-          cell = this.firstEditableCell()
-        } else {
-          cell = this.lastEditableCell()
-        }
-      }
-    } else {
-      cell = this.nextCell(cell)
-      if (cell >= this.grid.slickGrid.getHeader().childElementCount) {
-        row++
-        if (row >= maxRows) {
+    // Body wrapped in try/catch — `refreshColumnSnapshot()` and
+    // `nextCell` / `previousCell` invoke `slickGrid.getColumns()` /
+    // `getHeader()`, both of which can throw on corrupted SlickGrid
+    // state (destroyed grid receiving a late keystroke, host plugin
+    // mutating columns mid-keystroke, etc.). SlickGrid's notify() does
+    // NOT catch subscriber throws — without this guard the throw would
+    // propagate up to the browser event loop with no telemetry.
+    try {
+      // Refresh column snapshot so navigation reflects any setColumns() /
+      // column-picker changes since the last call. Read items length
+      // inline (NOT a constructor snapshot) so added/deleted rows show
+      // up in the row-overflow clamp below.
+      this.refreshColumnSnapshot()
+      const maxRows = this.grid.getItems().length
+      let row = this.currentRow ?? 0
+      let cell = this.currentCell ?? 0
+      if (e.shiftKey) {
+        cell = this.previousCell(cell)
+        if (cell < 0) {
           row--
-          cell = this.lastEditableCell()
-        } else {
-          cell = this.firstEditableCell()
+          if (row < 0) {
+            row = 0
+            cell = this.firstEditableCell()
+          } else {
+            cell = this.lastEditableCell()
+          }
+        }
+      } else {
+        cell = this.nextCell(cell)
+        if (cell >= this.grid.slickGrid.getHeader().childElementCount) {
+          row++
+          if (row >= maxRows) {
+            row--
+            cell = this.lastEditableCell()
+          } else {
+            cell = this.firstEditableCell()
+          }
         }
       }
+      args.row = row
+      args.cell = cell
+      this.enterKey = true
+      ;(this.grid.slickGrid.onActiveCellChanged as unknown as SlickEventEmitter).notify(args)
+    } catch (err) {
+      console.warn(
+        '[IdevsGridEditController] handleKeyDown threw — keystroke navigation aborted:',
+        err,
+      )
+      this.enterKey = false
     }
-    args.row = row
-    args.cell = cell
-    this.enterKey = true
-    ;(this.grid.slickGrid.onActiveCellChanged as unknown as SlickEventEmitter).notify(args)
   }
 
   private nextCell(cell: number): number {
@@ -499,11 +514,14 @@ export class IdevsGridEditController<
     this.allColumns = this.grid.slickGrid.getColumns() as unknown as GridColumn[]
     const column = this.allColumns[args.cell]
     if (!column || !column.sourceItem || column.sourceItem.readOnly) return
-    // `column.field` undefined would land every editor's write on
+    // `column.field` undefined / empty would land every editor's write on
     // `item["undefined"]` — a silent data-loss where the user sees the
     // cell update via textContent but no real entity field receives
-    // the value. Bail early instead.
-    if (!column.field) {
+    // the value. The `hasField` type predicate centralizes the check
+    // AND narrows `column` from `GridColumn` to `GridColumnWithField`
+    // so the renderer dispatch below doesn't need a separate `as`
+    // assertion.
+    if (!hasField(column)) {
       // Misconfiguration signal: an editable column with no `field` is
       // unusable. Log under the project's project-wide `no-console: warn`
       // policy so consumers can find the offending column descriptor.
@@ -529,17 +547,15 @@ export class IdevsGridEditController<
     const criteria = this.criteria
     this.criteria = null
 
-    // `column.field` is narrowed to `string` by the early-return above,
-    // but TS doesn't carry that into the `column` variable's type as a
-    // whole — assert via the dedicated `GridColumnWithField` alias so
-    // the renderer signature can drop its `column.field as string` casts.
-    const columnWithField = column as GridColumnWithField
+    // `column` is narrowed to `GridColumnWithField` by the `hasField`
+    // type predicate above — TypeScript flows the narrowing into the
+    // renderer dispatch automatically, no `as` cast required.
     if (render) {
       render({
         target: targetElement,
         item,
         args,
-        column: columnWithField,
+        column,
         criteria,
         notifyCellChange: () => this.notifyCellChange(args, item),
       })
@@ -549,7 +565,7 @@ export class IdevsGridEditController<
         target: targetElement,
         item,
         args,
-        column: columnWithField,
+        column,
         criteria,
         notifyCellChange: () => this.notifyCellChange(args, item),
       })

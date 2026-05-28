@@ -167,6 +167,23 @@ function makeProbe(opts: { columns?: unknown[]; items?: Record<string, unknown>[
     editActiveCell: vi.fn(),
     getColumns: vi.fn(() => opts.columns ?? []),
     getEditorLock: vi.fn(() => ({ isActive: () => false, commitCurrentEdit: vi.fn() })),
+    // For tests that invoke setupGridEventHandlers, these emitters
+    // need stub objects so addEventListener has something to subscribe
+    // to. The wrapped addEventListener in those tests no-ops the
+    // actual subscribe.
+    onBeforeEditCell: { subscribe: vi.fn(), unsubscribe: vi.fn() },
+    onActiveCellChanged: { subscribe: vi.fn(), unsubscribe: vi.fn() },
+    onClick: { subscribe: vi.fn(), unsubscribe: vi.fn() },
+    onDblClick: { subscribe: vi.fn(), unsubscribe: vi.fn() },
+    onKeyDown: { subscribe: vi.fn(), unsubscribe: vi.fn() },
+  }
+  // The captured `_opts` is read by setupGridEventHandlers. We add a
+  // simple default snapshot that resembles a basic editable+autoEdit
+  // configuration for tests that need it. Tests can override
+  // `probe['_opts']` directly if they need different settings.
+  ;(probe as unknown as { _opts: { editable?: boolean; autoEdit?: boolean } })['_opts'] = {
+    editable: true,
+    autoEdit: true,
   }
 
   return probe
@@ -659,53 +676,85 @@ describe('IdevsGridEditorBase — _lastValidationFailed regression (PR-4b round-
   // assigned `true`, so the intended "block row-change notify on failed
   // validate" was never triggered. These tests verify the flag is set
   // by the click-handler's failed-validate branch.
-  it('subsequent onActiveCellChanged after failed-validate does NOT advance _currentActiveRow', () => {
-    // Round-4 #4 regression: the prior version of this test set the
-    // flag itself, leaving the production paths at lines 409 + 459
-    // unverified. This rewrite drives the FOLLOW-ON behavior — once
-    // `_lastValidationFailed = true`, the next onActiveCellChanged
-    // event must suppress the row-change notify AND keep
-    // `_currentActiveRow` unchanged.
+  it('subsequent onActiveCellChanged after failed-validate does NOT advance _currentActiveRow (PR-4b round-5 #2)', () => {
+    // Round-4 #4 said "rewrite the test to drive the follow-on
+    // behavior" but the previous rewrite STILL inlined the handler
+    // body manually. Round 5 #2: drive the ACTUAL production handler
+    // by capturing it during setupGridEventHandlers — that way a
+    // refactor that flips the condition (e.g. `&& this._lastValidationFailed`)
+    // would fail this test.
     const probe = makeProbe()
+    const capturedHandlers: ((e: unknown, args: unknown) => void)[] = []
+    // Stub addEventListener to capture the onActiveCellChanged handler
+    // when setupGridEventHandlers calls it. We need to find the second
+    // capture (the active-cell-changed one) — addEventListener is
+    // called for onBeforeEditCell first, then onActiveCellChanged.
+    ;(probe as unknown as {
+      addEventListener: (
+        target: unknown,
+        eventName: string,
+        handler: (e: unknown, args: unknown) => void,
+      ) => void
+    }).addEventListener = (
+      _target: unknown,
+      _eventName: string,
+      handler: (e: unknown, args: unknown) => void,
+    ) => {
+      capturedHandlers.push(handler)
+    }
+    // Invoke setupGridEventHandlers via the prototype so the production
+    // wiring captures the real handler closure.
+    ;(probe as unknown as { setupGridEventHandlers(): void }).setupGridEventHandlers()
+    // The second-registered handler is onActiveCellChanged.
+    expect(capturedHandlers.length).toBeGreaterThanOrEqual(2)
+    const onActiveCellChangedHandler = capturedHandlers[1]!
+
+    // Prime state + subscribers.
     probe._currentActiveRow = 5
     probe._lastValidationFailed = true
-    // notifyRowChange subscriber should NOT fire because the flag
-    // suppresses it.
     const rowChangeCb = vi.fn()
     probe.subscribeToRowChange(rowChangeCb)
-    // Simulate the onActiveCellChanged handler body
-    // (idevsGridEditorBase.ts:407-425) — manually mirror the flag
-    // check since calling the bound handler would require the full
-    // subscribe wiring.
-    const newRow = 7
-    const oldRow = probe._currentActiveRow
-    if (oldRow !== null && oldRow !== newRow && !probe._lastValidationFailed) {
-      probe.notifyRowChange(oldRow, newRow, {}, {})
-    }
-    if (!probe._lastValidationFailed) {
-      probe._currentActiveRow = newRow
-    }
-    probe._lastValidationFailed = false
-    // The flag was true → no notify, no advance.
+    probe.slickGrid.getDataItem = vi.fn((row: number) => ({ row }))
+
+    // Fire the REAL production handler.
+    onActiveCellChangedHandler({}, { row: 7 })
+
+    // Production behavior: flag was true → no notify, no advance.
     expect(rowChangeCb).not.toHaveBeenCalled()
     expect(probe._currentActiveRow).toBe(5)
+    // AND the flag must have been reset to false at the end of the
+    // handler so the NEXT cell-change is honored.
+    expect(probe._lastValidationFailed).toBe(false)
   })
 
-  it('next onActiveCellChanged after the flag resets DOES advance + notify', () => {
+  it('next onActiveCellChanged after the flag resets DOES advance + notify (PR-4b round-5 #2)', () => {
+    // Captures the REAL handler (same pattern as above) and verifies
+    // the post-reset path: flag=false → notify fires + active row
+    // advances.
     const probe = makeProbe()
+    const capturedHandlers: ((e: unknown, args: unknown) => void)[] = []
+    ;(probe as unknown as {
+      addEventListener: (
+        target: unknown,
+        eventName: string,
+        handler: (e: unknown, args: unknown) => void,
+      ) => void
+    }).addEventListener = (_t: unknown, _n: string, handler: (e: unknown, args: unknown) => void) => {
+      capturedHandlers.push(handler)
+    }
+    ;(probe as unknown as { setupGridEventHandlers(): void }).setupGridEventHandlers()
+    const onActiveCellChangedHandler = capturedHandlers[1]!
+
     probe._currentActiveRow = 5
     probe._lastValidationFailed = false
     const rowChangeCb = vi.fn()
     probe.subscribeToRowChange(rowChangeCb)
-    const newRow = 7
-    const oldRow = probe._currentActiveRow
-    if (oldRow !== null && oldRow !== newRow && !probe._lastValidationFailed) {
-      probe.notifyRowChange(oldRow, newRow, {}, {})
-    }
-    if (!probe._lastValidationFailed) {
-      probe._currentActiveRow = newRow
-    }
-    expect(rowChangeCb).toHaveBeenCalledWith(5, 7, {}, {})
+    probe.slickGrid.getDataItem = vi.fn((row: number) => ({ row }))
+
+    onActiveCellChangedHandler({}, { row: 7 })
+
+    // Production behavior: flag was false → notify fires + row advances.
+    expect(rowChangeCb).toHaveBeenCalledWith(5, 7, { row: 5 }, { row: 7 })
     expect(probe._currentActiveRow).toBe(7)
   })
 })
@@ -828,6 +877,57 @@ describe('IdevsGridEditorBase — getDeletedRows defensive copy (PR-4b round-3 #
       id: 1,
       name: 'A',
     })
+  })
+
+  it('falls back to shallow copy + warns when structuredClone throws DataCloneError (PR-4b round-5 #1)', () => {
+    // Round 5 #1: round-4 only guarded `typeof === 'function'`
+    // (undefined-availability). If structuredClone exists but THROWS
+    // on a non-cloneable TEntity (functions, DOM refs, class privates),
+    // the call would crash the caller. Round-5 fix wraps in try/catch
+    // and falls back to shallow spread.
+    const probe = makeProbe()
+    // Inject an entity with a function property — structuredClone
+    // throws DataCloneError on functions.
+    const fn = () => 'computed'
+    probe._deletedRows = [{ id: 1, name: 'A', onChange: fn }]
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const returned = probe.getDeletedRows() as { id: number; name: string }[]
+      // The result is a SHALLOW copy (fallback path) — array is fresh
+      // but elements are shared. Verify the call returned something
+      // sensible and didn't throw.
+      expect(returned.length).toBe(1)
+      expect(returned[0]!.id).toBe(1)
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('structuredClone failed'),
+        expect.any(Error),
+      )
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it('falls back to shallow copy when structuredClone is undefined (PR-4b round-5 #10)', () => {
+    // Round 5 #10: the shallow-fallback path (line 176 of source) is
+    // dead under Node 18+ tests because structuredClone is always
+    // available. Stub it to undefined to exercise the fallback branch.
+    const probe = makeProbe()
+    probe._deletedRows = [{ id: 1, name: 'A' }]
+    const originalStructuredClone = (globalThis as { structuredClone?: typeof structuredClone })
+      .structuredClone
+    ;(globalThis as { structuredClone?: typeof structuredClone }).structuredClone = undefined
+    try {
+      const returned = probe.getDeletedRows() as { id: number; name: string }[]
+      expect(returned).toEqual([{ id: 1, name: 'A' }])
+      // Verify it IS a shallow copy: same element reference, different array.
+      expect(returned).not.toBe(probe._deletedRows as unknown)
+      expect(returned[0]).toBe(
+        (probe._deletedRows as { id: number; name: string }[])[0],
+      )
+    } finally {
+      ;(globalThis as { structuredClone?: typeof structuredClone }).structuredClone =
+        originalStructuredClone
+    }
   })
 })
 

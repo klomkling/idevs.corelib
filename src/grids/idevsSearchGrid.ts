@@ -357,7 +357,16 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
   // ---- Authorized dialog open. ----
 
   protected override editItem(entityOrId: string | number): void {
-    if (!Authorization.hasPermission(this._editPermission)) return
+    if (!Authorization.hasPermission(this._editPermission)) {
+      // Silent return preserved (the source did the same) — but log at
+      // debug-level so misconfigured `_editPermission` (e.g. empty string
+      // → unintentional gate) is traceable. Consumers wanting a
+      // user-visible signal can override `editItem` directly.
+      console.debug(
+        `[IdevsSearchGrid] editItem(${String(entityOrId)}) denied: permission '${this._editPermission}' not granted`,
+      )
+      return
+    }
 
     const dialogTypeOrPromise = this.getDialogType()
 
@@ -404,7 +413,18 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
         `[IdevsSearchGrid] handleEditItemError override threw (phase=${phase}):`,
         handlerErr,
       )
-      notifyError('Unable to open editor dialog.')
+      // The fallback notifyError is ALSO wrapped — if Serenity's toast
+      // path itself throws (detached container, consumer monkey-patch),
+      // the secondary throw would resurrect the very unhandled-rejection
+      // symptom the safe-wrap exists to prevent.
+      try {
+        notifyError('Unable to open editor dialog.')
+      } catch (notifyErr) {
+        console.warn(
+          '[IdevsSearchGrid] notifyError fallback also threw — no user-visible signal possible:',
+          notifyErr,
+        )
+      }
     }
   }
 

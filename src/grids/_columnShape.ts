@@ -77,11 +77,30 @@ export type GridColumn = {
 }
 
 /**
- * Variant of `GridColumn` where `field` is guaranteed defined. The
- * `IdevsGridEditController` dispatcher checks `column.field` before
- * invoking a renderer (a column without `field` writes to
- * `item["undefined"]` silently); the renderer signature uses this
- * narrowed type so the implementation doesn't need `column.field as string`
- * casts at every write site.
+ * Variant of `GridColumn` where `field` is guaranteed defined and
+ * non-empty. The `IdevsGridEditController` dispatcher checks
+ * `column.field` before invoking a renderer (a column without `field`
+ * writes to `item["undefined"]` silently); the renderer signature uses
+ * this narrowed type so the implementation doesn't need `column.field as
+ * string` casts at every write site.
  */
 export type GridColumnWithField = GridColumn & { field: string }
+
+/**
+ * Type predicate for `GridColumnWithField`. Centralizes the field-
+ * validity rule (non-empty string) so the dispatcher and any custom
+ * editor code can share the same check + type narrowing without
+ * resorting to `as GridColumnWithField` casts.
+ *
+ * Usage:
+ *
+ *     if (!hasField(column)) {
+ *       // column.field is undefined / empty
+ *       return
+ *     }
+ *     // column is GridColumnWithField here — column.field: string
+ *     item[column.field] = value
+ */
+export function hasField(column: GridColumn): column is GridColumnWithField {
+  return typeof column.field === 'string' && column.field.length > 0
+}

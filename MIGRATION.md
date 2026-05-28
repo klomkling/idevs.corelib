@@ -46,9 +46,16 @@ Consistent with the batch-4a hardening pattern: PowerACC PascalCase property set
 - `EditPermission` → `setEditPermission()` / `getEditPermission()`
 - `PreItems` → `setPreItems()` / `getPreItems()`
 
+New overridable hooks on `IdevsSearchGrid`:
+- `handleEditItemError(err, entityOrId, phase?)` — protected hook invoked when `editItem` fails to load or open a dialog. `phase` distinguishes `'dialog-load'` (rejected `getDialogType()` Promise — typically transient: chunk-load / dynamic-import / module 404) from `'dialog-open'` (dialog constructor threw OR `loadByIdAndOpenDialog` rejected — typically terminal). Default implementation calls `notifyError('Unable to open editor dialog.')` + structured `console.warn`. Backward compat: 2-arg overrides (`(err, entityOrId)`) still type-check — `phase` is optional. Override-throws are caught by the internal `safeHandleEditItemError` wrapper and downgraded so they don't become unhandled rejections.
+
 `IdevsGridEditorBase`:
 - `IsFirstClicked` → `setIsFirstClicked()` / `getIsFirstClicked()`
-- `DeletedRows` (getter only) → `getDeletedRows()`
+- `DeletedRows` (getter only) → `getDeletedRows()` — now returns a deep copy via `structuredClone` when available (falls back to shallow spread + warn on `DataCloneError` for non-cloneable `TEntity` shapes)
+
+New overridable hooks on `IdevsGridEditorBase`:
+- `formatValidationMessage(errors)` — return `{ text, escapeHtml }` payload forwarded to `notifyError`. Default joins messages with `\n` and `escapeHtml: true`. Override to opt into HTML formatting (consumers MUST sanitize themselves; see XSS hardening notes below).
+- `getOrderField()` — return the per-row field name used as the order key by `moveCurrentRowUp` / `moveCurrentRowDown`. Default `'ItemNo'` for PowerACC parity; return `null` to disable order-field swapping entirely.
 
 ### Security / behavior hardening highlights
 
