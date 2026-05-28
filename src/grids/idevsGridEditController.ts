@@ -79,9 +79,28 @@ type GridColumn = {
  *     documented as a follow-up.
  */
 
+/**
+ * Type alias for the `grid` field on the controller's options.
+ *
+ * Typed as `EntityGrid<any, any>` rather than `EntityGrid<unknown, unknown>`
+ * because the latter is invariant through Serenity's `RemoteView`
+ * callbacks: `EntityGrid<TItem, P>` references `RemoteViewProcessCallback
+ * <TItem>` and related signatures that put TItem in both covariant and
+ * contravariant positions. Under strict TypeScript a consumer's
+ * `EntityGrid<MyRow, MyOpts>` is NOT assignable to
+ * `EntityGrid<unknown, unknown>` and the obvious call site
+ * `new IdevsGridEditController({ grid: this })` from inside an
+ * EntityGrid subclass fails to type-check. `any` is bivariant and
+ * matches Serenity's own public-API convention for grid parameters;
+ * the controller's internals never read TItem/P off the grid type, so
+ * the concession is purely at the type boundary.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- see JSDoc above
+type IdevsGridEditControllerGrid = EntityGrid<any, any>
+
 /** Public constructor options. */
 export type IdevsGridEditControllerOptions = {
-  grid: EntityGrid<unknown, unknown>
+  grid: IdevsGridEditControllerGrid
 }
 
 /**
@@ -146,7 +165,7 @@ type Select2Event = {
 
 @Decorators.registerClass('Idevs.CoreLib.IdevsGridEditController')
 export class IdevsGridEditController {
-  private readonly grid: EntityGrid<unknown, unknown>
+  private readonly grid: IdevsGridEditControllerGrid
   private allColumns: GridColumn[]
   private readonly visibleColumns: GridColumn[]
   private maxRows: number
@@ -168,8 +187,10 @@ export class IdevsGridEditController {
   private readonly cellEditorRegistry = new Map<string, IdevsCellEditorRender>()
 
   /** Tracked subscriptions so `destroy()` can unsubscribe cleanly. */
-  private readonly subscriptions: { emitter: SlickEventEmitter; handler: (...args: never[]) => unknown }[] =
-    []
+  private readonly subscriptions: {
+    emitter: SlickEventEmitter
+    handler: (e: IEventData, args: ArgsCell) => unknown
+  }[] = []
 
   /** Set to true after `destroy()` so late-firing events are silent. */
   private destroyed: boolean = false
@@ -192,11 +213,11 @@ export class IdevsGridEditController {
     if (this.editable) {
       if (this.autoEdit) {
         this.subscribe(this.grid.slickGrid.onClick as unknown as SlickEventEmitter, (e, args) =>
-          this.loadEditor(e.target as HTMLElement, args),
+          this.loadEditorForCell(args),
         )
       } else {
         this.subscribe(this.grid.slickGrid.onDblClick as unknown as SlickEventEmitter, (e, args) =>
-          this.loadEditor(e.target as HTMLElement, args),
+          this.loadEditorForCell(args),
         )
       }
     }
@@ -248,7 +269,7 @@ export class IdevsGridEditController {
     handler: (e: IEventData, args: ArgsCell) => unknown,
   ): void {
     emitter.subscribe(handler)
-    this.subscriptions.push({ emitter, handler: handler as unknown as (...args: never[]) => unknown })
+    this.subscriptions.push({ emitter, handler })
   }
 
   // ---- Cell navigation state machine. ----
@@ -405,6 +426,11 @@ export class IdevsGridEditController {
 
   // ---- Editor dispatch. ----
 
+  private loadEditorForCell(args: ArgsCell): void {
+    const cell = this.grid.slickGrid.getCellNode(args.row, args.cell)
+    if (cell) this.loadEditor(cell, args)
+  }
+
   private loadEditor(targetElement: HTMLElement, args: ArgsCell): void {
     if (this.destroyed || !this.editable) {
       this.enterKey = false
@@ -541,9 +567,13 @@ export class IdevsGridEditController {
     // Boolean is a click-to-toggle on a span — no editor widget to
     // instantiate or toggle-off behavior to replicate.
     if (this.isReadonlyCell(args.cell)) return
-    if (target.tagName.toLowerCase() !== 'span') return
-    target.classList.toggle('checked')
-    item[column.field as string] = target.classList.contains('checked')
+    const toggleTarget =
+      target.tagName.toLowerCase() === 'span'
+        ? target
+        : target.querySelector<HTMLElement>('span')
+    if (!toggleTarget) return
+    toggleTarget.classList.toggle('checked')
+    item[column.field as string] = toggleTarget.classList.contains('checked')
     notifyCellChange()
   }
 

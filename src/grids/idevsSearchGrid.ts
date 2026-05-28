@@ -272,8 +272,8 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
         .querySelectorAll('.slick-row')
         .forEach(slickRow => slickRow.classList.remove('active'))
     }
-    const parent = target.parentElement
-    if (parent) parent.classList.add('active')
+    const rowElement = target.closest('.slick-row')
+    if (rowElement) rowElement.classList.add('active')
 
     // Emit a synthetic cell-change to drive consumers (typically a parent
     // dialog) that listen for the active row.

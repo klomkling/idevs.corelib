@@ -296,7 +296,7 @@ describe('IdevsSearchGrid — getGridCanLoad', () => {
 })
 
 describe('IdevsSearchGrid — onClick + authorization gating', () => {
-  it('onClick toggles "active" on the parent and clears siblings', () => {
+  it('onClick toggles "active" on the closest Slick row and clears siblings', () => {
     const probe = makeProbe()
     const viewport = document.createElement('div')
     viewport.className = 'slick-viewport'
@@ -310,8 +310,12 @@ describe('IdevsSearchGrid — onClick + authorization gating', () => {
     newRow.className = 'slick-row'
     viewport.appendChild(newRow)
 
+    const cellNode = document.createElement('div')
+    cellNode.className = 'slick-cell'
+    newRow.appendChild(cellNode)
+
     const child = document.createElement('span')
-    newRow.appendChild(child)
+    cellNode.appendChild(child)
 
     const evt = new MouseEvent('click', { bubbles: true })
     Object.defineProperty(evt, 'target', { value: child })
@@ -332,6 +336,7 @@ describe('IdevsSearchGrid — onClick + authorization gating', () => {
 
     expect(otherRow.classList.contains('active')).toBe(false)
     expect(newRow.classList.contains('active')).toBe(true)
+    expect(cellNode.classList.contains('active')).toBe(false)
     expect(probe.slickGrid.onCellChange.notify).toHaveBeenCalled()
   })
 

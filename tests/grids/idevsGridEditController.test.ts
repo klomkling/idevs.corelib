@@ -385,6 +385,7 @@ describe('IdevsGridEditController — custom renderer dispatch + XSS regression'
 
     // Invoke loadEditor through the click subscriber path.
     const targetCell = document.createElement('div')
+    slickGrid.getCellNode.mockReturnValue(targetCell)
     const clickHandler = slickGrid.onClick.subscribers[0]
     clickHandler(
       { target: targetCell } as unknown as Event,
@@ -402,6 +403,46 @@ describe('IdevsGridEditController — custom renderer dispatch + XSS regression'
     expect(targetCell.textContent).toBe('custom-rendered')
     // XSS regression: textContent never produces innerHTML script execution.
     expect(targetCell.innerHTML).not.toContain('<script')
+  })
+
+  it('clicking nested formatted markup renders into the Slick cell node', () => {
+    const items = [{ name: 'A' }]
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: [{ field: 'name', visible: true, sourceItem: { editorType: 'Custom.X' } }],
+      items,
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+
+    const customRender: IdevsCellEditorRender = vi.fn(({ target }) => {
+      target.textContent = 'custom-rendered'
+    })
+    controller.registerCellEditor('Custom.X', customRender)
+
+    const targetCell = document.createElement('div')
+    const formatterWrapper = document.createElement('span')
+    const icon = document.createElement('span')
+    formatterWrapper.appendChild(icon)
+    targetCell.appendChild(formatterWrapper)
+    slickGrid.getCellNode.mockReturnValue(targetCell)
+
+    const clickHandler = slickGrid.onClick.subscribers[0]
+    clickHandler(
+      { target: icon } as unknown as Event,
+      { row: 0, cell: 0, grid: slickGrid } as Record<string, unknown>,
+    )
+
+    expect(customRender).toHaveBeenCalledTimes(1)
+    const callArgs = (customRender as unknown as { mock: { calls: { 0: unknown[] }[] } }).mock
+      .calls[0]?.[0] as {
+      target: HTMLElement
+    }
+    expect(callArgs.target).toBe(targetCell)
+    expect(targetCell.textContent).toBe('custom-rendered')
+    expect(formatterWrapper.textContent).not.toBe('custom-rendered')
   })
 
   it('loadEditor short-circuits when destroyed', () => {
