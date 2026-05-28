@@ -116,9 +116,15 @@ export type IdevsGridEditControllerOptions<
 }
 
 /**
- * Render function signature for a custom cell editor. Implementations
- * MUST handle the toggle-off case themselves (typically by removing
- * `target`'s existing first child if `target.childElementCount > 0`).
+ * Render function signature for a custom cell editor.
+ *
+ * **Lifecycle: the renderer is invoked ONLY for fresh mounts.** The
+ * controller handles toggle-off automatically before dispatch — if a
+ * marked editor is already mounted in the cell when the user clicks
+ * again, the controller removes it and bails out without calling the
+ * renderer. Custom renderers do not need to call any "remove existing
+ * editor" helper themselves; they can assume the target is ready for
+ * a fresh mount.
  *
  * Inputs:
  *   - `target`: the cell DOM element. Render via the
@@ -571,6 +577,20 @@ export class IdevsGridEditController<
       ;(this.grid.slickGrid.onActiveCellChanged as unknown as SlickEventEmitter).notify(args)
     }
 
+    // Controller-managed toggle-off (round-7 #4): if a marked editor
+    // is already mounted in this cell, remove it and bail BEFORE
+    // dispatching to the renderer. This means renderers — both
+    // built-in AND public custom ones registered via
+    // `registerCellEditor(...)` — never have to call
+    // `removeExistingEditor` themselves. They're always invoked for a
+    // fresh mount. Boolean cells are naturally unaffected: they
+    // never use `appendEditorChild`, so their span carries no marker
+    // and `removeExistingEditor` returns false.
+    if (this.removeExistingEditor(targetElement)) {
+      this.enterKey = false
+      return
+    }
+
     // Narrow editorType (typed `unknown` to stay assignable from Serenity's
     // wider PropertyItem.editorType union) to the string case the
     // dispatcher actually keys on. Non-string editor types fall through
@@ -708,7 +728,6 @@ export class IdevsGridEditController<
     column,
     notifyCellChange,
   }) => {
-    if (this.removeExistingEditor(target)) return
     const editorParams = this.editorParamsFor(column)
     const integerEditor = new IntegerEditor(editorParams)
     ;(integerEditor as unknown as { value: unknown }).value = this.getCellValue(item, column)
@@ -729,7 +748,6 @@ export class IdevsGridEditController<
     column,
     notifyCellChange,
   }) => {
-    if (this.removeExistingEditor(target)) return
     const editorParams = this.editorParamsFor(column)
     const decimalEditor = new DecimalEditor(editorParams)
     ;(decimalEditor as unknown as { value: unknown }).value = this.getCellValue(item, column)
@@ -786,7 +804,6 @@ export class IdevsGridEditController<
     column,
     notifyCellChange,
   }) => {
-    if (this.removeExistingEditor(target)) return
     const editorParams = this.editorParamsFor(column)
     const lookupEditor = new LookupEditor(editorParams)
     const container = (lookupEditor as unknown as Select2Container).combobox?.container
@@ -812,7 +829,6 @@ export class IdevsGridEditController<
     criteria,
     notifyCellChange,
   }) => {
-    if (this.removeExistingEditor(target)) return
     const editorParams = this.editorParamsFor(column)
     if (criteria) {
       ;(editorParams as Record<string, unknown>).criteria = criteria
@@ -848,7 +864,6 @@ export class IdevsGridEditController<
     column,
     notifyCellChange,
   }) => {
-    if (this.removeExistingEditor(target)) return
     const editorParams = this.editorParamsFor(column)
     const stringEditor = new StringEditor(editorParams)
     ;(stringEditor as unknown as { value: unknown }).value = this.getCellValue(item, column)
