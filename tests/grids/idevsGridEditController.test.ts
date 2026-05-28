@@ -593,8 +593,13 @@ describe('IdevsGridEditController — column.field undefined guard (PR-4b round-
   })
 })
 
-describe('IdevsGridEditController — with-editor class toggle-off (PR-4b round-3 #14)', () => {
-  it('removeExistingEditor strips the with-editor class', () => {
+describe('IdevsGridEditController — with-editor class toggle-off (PR-4b round-3 #14 + round-7 #1)', () => {
+  // Round 7 #1: removeExistingEditor now distinguishes controller-owned
+  // editor nodes (marked with data-idevs-cell-editor="true" via
+  // `appendEditorChild`) from arbitrary formatter markup. The tests
+  // here use a marked child to exercise the toggle-off behavior; the
+  // formatter-markup regression test below verifies the round-7 fix.
+  it('removeExistingEditor removes a MARKED editor child + strips the with-editor class', () => {
     const { grid } = makeFakeGrid({})
     controller = new IdevsGridEditController({
       grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
@@ -602,6 +607,8 @@ describe('IdevsGridEditController — with-editor class toggle-off (PR-4b round-
     const target = document.createElement('div')
     target.classList.add('with-editor')
     const child = document.createElement('input')
+    // Round-7: only marked children are treated as "an existing editor".
+    child.setAttribute('data-idevs-cell-editor', 'true')
     target.appendChild(child)
     const removed = (
       controller as unknown as { removeExistingEditor(t: HTMLElement): boolean }
@@ -611,7 +618,54 @@ describe('IdevsGridEditController — with-editor class toggle-off (PR-4b round-
     expect(target.classList.contains('with-editor')).toBe(false)
   })
 
-  it('loadEditor does NOT add with-editor when the renderer appended no child (toggle-off case)', () => {
+  it('removeExistingEditor IGNORES unmarked formatter markup (round-7 #1 regression)', () => {
+    // Round 7 #1: the prior `removeExistingEditor` stripped ANY first
+    // child. Combined with round-4's switch to passing the real Slick
+    // cell into loadEditor, formatter markup like `<span><i/></span>`
+    // got removed on every click and the editor never rendered. Fix:
+    // require the `data-idevs-cell-editor` marker.
+    const { grid } = makeFakeGrid({})
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const target = document.createElement('div')
+    const formatter = document.createElement('span')
+    formatter.appendChild(document.createElement('i'))
+    target.appendChild(formatter)
+    const removed = (
+      controller as unknown as { removeExistingEditor(t: HTMLElement): boolean }
+    ).removeExistingEditor(target)
+    expect(removed).toBe(false)
+    // Formatter markup is preserved.
+    expect(target.childElementCount).toBe(1)
+    expect(target.firstElementChild).toBe(formatter)
+  })
+
+  it('appendEditorChild marks the appended node so subsequent toggle-off works', () => {
+    const { grid } = makeFakeGrid({})
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const target = document.createElement('div')
+    const editor = document.createElement('input')
+    ;(controller as unknown as { appendEditorChild(t: HTMLElement, c: HTMLElement): void }).appendEditorChild(
+      target,
+      editor,
+    )
+    expect(editor.getAttribute('data-idevs-cell-editor')).toBe('true')
+    // Now removeExistingEditor must recognize it.
+    const removed = (
+      controller as unknown as { removeExistingEditor(t: HTMLElement): boolean }
+    ).removeExistingEditor(target)
+    expect(removed).toBe(true)
+    expect(target.childElementCount).toBe(0)
+  })
+
+  it('loadEditor renders into a cell that has unmarked formatter markup (round-7 #1)', () => {
+    // End-to-end regression: a SlickGrid cell with formatter markup
+    // pre-populated (the common case for typed-value cells) must
+    // accept the editor on the FIRST click, not toggle off the
+    // formatter and skip rendering.
     const { grid, slickGrid } = makeFakeGrid({
       editable: true,
       autoEdit: true,
@@ -621,22 +675,71 @@ describe('IdevsGridEditController — with-editor class toggle-off (PR-4b round-
     controller = new IdevsGridEditController({
       grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
     })
-    // Renderer that hits the toggle-off path: target already has a
-    // child, so removeExistingEditor returns true and the renderer
-    // short-circuits without appending anything.
+    // A custom renderer that emulates the contract: check for toggle-
+    // off via removeExistingEditor; if no editor present, mount one
+    // via appendEditorChild.
     const renderer: IdevsCellEditorRender = vi.fn(({ target }) => {
-      const removed =
-        (controller as unknown as { removeExistingEditor(t: HTMLElement): boolean }).removeExistingEditor(
-          target,
-        )
+      const removed = (controller as unknown as {
+        removeExistingEditor(t: HTMLElement): boolean
+      }).removeExistingEditor(target)
       if (removed) return
-      target.appendChild(document.createElement('input'))
+      const input = document.createElement('input')
+      ;(controller as unknown as {
+        appendEditorChild(t: HTMLElement, c: HTMLElement): void
+      }).appendEditorChild(target, input)
     })
     controller.registerCellEditor('Custom.X', renderer)
 
     const targetCell = document.createElement('div')
-    // Pre-populate with a child so toggle-off fires.
+    // Formatter markup (the round-4 → round-7 #1 bug trigger).
+    const formatter = document.createElement('span')
+    formatter.appendChild(document.createElement('i'))
+    targetCell.appendChild(formatter)
+    slickGrid.getCellNode.mockReturnValue(targetCell)
+
+    const clickHandler = slickGrid.onClick.subscribers[0]
+    clickHandler(
+      { target: targetCell } as unknown as Event,
+      { row: 0, cell: 0, grid: slickGrid } as Record<string, unknown>,
+    )
+
+    // Editor mounted alongside the formatter — toggle-off did NOT
+    // fire on the unmarked formatter child.
+    expect(renderer).toHaveBeenCalledTimes(1)
+    const editor = targetCell.querySelector('[data-idevs-cell-editor="true"]')
+    expect(editor).not.toBeNull()
+    // with-editor class added because an editor IS present.
+    expect(targetCell.classList.contains('with-editor')).toBe(true)
+  })
+
+  it('loadEditor does NOT add with-editor when the renderer appended no MARKED child (toggle-off case)', () => {
+    // Round 3 #14 (updated for round-7): a renderer that calls
+    // removeExistingEditor and short-circuits (toggle-off) — the cell
+    // ends with no marked editor child, and `with-editor` is NOT
+    // added.
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: [{ field: 'name', visible: true, sourceItem: { editorType: 'Custom.X' } }],
+      items: [{ name: 'A' }],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const renderer: IdevsCellEditorRender = vi.fn(({ target }) => {
+      const removed = (controller as unknown as {
+        removeExistingEditor(t: HTMLElement): boolean
+      }).removeExistingEditor(target)
+      if (removed) return
+      // Don't mount — simulates toggle-off NOT mounting fresh editor.
+    })
+    controller.registerCellEditor('Custom.X', renderer)
+
+    const targetCell = document.createElement('div')
+    // Pre-populate with a MARKED editor child so removeExistingEditor
+    // returns true (i.e. the renderer takes the toggle-off branch).
     const stale = document.createElement('span')
+    stale.setAttribute('data-idevs-cell-editor', 'true')
     targetCell.appendChild(stale)
     targetCell.classList.add('with-editor')
     slickGrid.getCellNode.mockReturnValue(targetCell)
@@ -646,8 +749,8 @@ describe('IdevsGridEditController — with-editor class toggle-off (PR-4b round-
       { target: targetCell } as unknown as Event,
       { row: 0, cell: 0, grid: slickGrid } as Record<string, unknown>,
     )
-    // Toggle-off ran: no child, no with-editor class.
-    expect(targetCell.childElementCount).toBe(0)
+    // Toggle-off ran: no marked editor child, no with-editor class.
+    expect(targetCell.querySelector('[data-idevs-cell-editor]')).toBeNull()
     expect(targetCell.classList.contains('with-editor')).toBe(false)
   })
 })

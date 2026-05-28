@@ -121,7 +121,13 @@ export type IdevsGridEditControllerOptions<
  * `target`'s existing first child if `target.childElementCount > 0`).
  *
  * Inputs:
- *   - `target`: the cell DOM element. Render into `target.appendChild(...)`.
+ *   - `target`: the cell DOM element. Render via the controller's
+ *     `appendEditorChild(target, node)` helper (NOT a raw
+ *     `target.appendChild(...)`) so the controller can later
+ *     distinguish your editor node from any formatter markup that
+ *     the host grid put inside the same cell. Custom renderers that
+ *     `target.appendChild(...)` directly will work the FIRST time
+ *     but will be treated as a toggle-off on the next click.
  *   - `item`: the data row (the editor mutates this in place on commit).
  *   - `args`: SlickGrid's cell context for the active edit.
  *   - `column`: SlickGrid's column definition (carries `sourceItem` /
@@ -590,14 +596,18 @@ export class IdevsGridEditController<
 
     // Boolean is a click-to-toggle on an in-cell span (no editor child),
     // so we don't want the `with-editor` styling. For every other type,
-    // we only add the class if the renderer actually appended an editor
-    // child — `removeExistingEditor` strips it on toggle-off, so empty
-    // means "toggled off" and we should NOT leave the cell styled.
+    // we only add the class if the renderer actually appended an
+    // editor child. We identify "editor child" by the
+    // `data-idevs-cell-editor` marker that `appendEditorChild` sets —
+    // NOT by `firstElementChild != null` (which would mistakenly match
+    // formatter markup like `<span><i/></span>` that lives inside the
+    // real Slick cell node since round-4 hooked `getCellNode` for
+    // dispatch).
     if (editorType !== 'Boolean') {
-      const firstChild = targetElement.firstElementChild as HTMLElement | null
-      if (firstChild) {
+      const editorChild = this.findEditorChild(targetElement)
+      if (editorChild) {
         targetElement.classList.add('with-editor')
-        firstChild.focus()
+        editorChild.focus()
       } else {
         targetElement.classList.remove('with-editor')
       }
@@ -607,16 +617,66 @@ export class IdevsGridEditController<
   }
 
   /**
-   * If the target already has a child, remove it (toggle-off). Returns
-   * `true` if a removal happened — the caller should NOT proceed with
-   * fresh editor creation in that case (matches the source's toggle
-   * behavior). Also strips the `with-editor` class so the cell doesn't
-   * keep editor styling after the editor child is gone.
+   * Marker attribute applied to every editor child appended via
+   * `appendEditorChild`. Used by `removeExistingEditor` and
+   * `findEditorChild` to distinguish controller-owned editor nodes
+   * from arbitrary formatter markup inside the Slick cell. Without a
+   * marker, `removeExistingEditor` would treat formatter `<span>` /
+   * `<i>` as a "previous editor" and toggle-off on every click — the
+   * bug that PR-4b round-7 #1 surfaced.
+   */
+  private static readonly EDITOR_MARKER_ATTR = 'data-idevs-cell-editor'
+
+  /**
+   * Append a child to the cell AND tag it with the editor marker so
+   * subsequent calls to `removeExistingEditor` / `findEditorChild`
+   * can distinguish it from formatter markup. All built-in renderers
+   * and any custom renderers calling out via `IdevsCellEditorRender`
+   * SHOULD route through this helper to participate in the toggle-off
+   * / focus-on-mount contract.
+   */
+  protected appendEditorChild(target: HTMLElement, child: HTMLElement): void {
+    child.setAttribute(IdevsGridEditController.EDITOR_MARKER_ATTR, 'true')
+    target.appendChild(child)
+  }
+
+  /**
+   * Find the controller-owned editor child of `target`, if any.
+   * Returns null when no child carries the editor marker. Scans all
+   * direct children (NOT just `firstElementChild`) so a cell that
+   * already contains formatter markup at index 0 still surfaces the
+   * editor mounted alongside it.
+   */
+  private findEditorChild(target: HTMLElement): HTMLElement | null {
+    const children = target.children
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i] as HTMLElement
+      if (
+        child.getAttribute(IdevsGridEditController.EDITOR_MARKER_ATTR) === 'true'
+      ) {
+        return child
+      }
+    }
+    return null
+  }
+
+  /**
+   * If the target has a CONTROLLER-OWNED editor child (marked by
+   * `appendEditorChild`), remove it (toggle-off) and strip the
+   * `with-editor` class. Returns `true` if a removal happened —
+   * the caller should NOT proceed with fresh editor creation.
+   *
+   * Critically, returns `false` when `target.firstElementChild` is
+   * formatter markup (no editor marker). Without this distinction,
+   * a cell rendered as `<span><i/></span>` by a Serenity formatter
+   * would have its formatter span stripped on every click — and the
+   * renderer would think it had "toggled off" and skip mounting the
+   * editor entirely.
    */
   private removeExistingEditor(target: HTMLElement): boolean {
-    if (target.childElementCount === 0) return false
-    const firstChild = target.firstElementChild as HTMLElement | null
-    if (firstChild) firstChild.remove()
+    const editorChild = this.findEditorChild(target)
+    if (!editorChild) return false
+    editorChild.remove()
     target.classList.remove('with-editor')
     return true
   }
@@ -642,7 +702,7 @@ export class IdevsGridEditController<
       target.textContent = stringValue
       notifyCellChange()
     })
-    target.appendChild((integerEditor as unknown as RemovableEditor).domNode)
+    this.appendEditorChild(target, (integerEditor as unknown as RemovableEditor).domNode)
   }
 
   private readonly renderDecimalEditor: IdevsCellEditorRender = ({
@@ -672,7 +732,7 @@ export class IdevsGridEditController<
       target.textContent = formattedValue
       notifyCellChange()
     })
-    target.appendChild((decimalEditor as unknown as RemovableEditor).domNode)
+    this.appendEditorChild(target, (decimalEditor as unknown as RemovableEditor).domNode)
   }
 
   private readonly renderBooleanEditor: IdevsCellEditorRender = ({
@@ -714,7 +774,7 @@ export class IdevsGridEditController<
     const container = (lookupEditor as unknown as Select2Container).combobox?.container
     ;(lookupEditor as unknown as { value: unknown }).value = this.getCellValue(item, column)
     if (container) {
-      target.appendChild(container)
+      this.appendEditorChild(target, container)
       target.classList.add('text-white')
     }
     ;(lookupEditor as unknown as {
@@ -743,7 +803,7 @@ export class IdevsGridEditController<
     const container = (serviceLookupEditor as unknown as Select2Container).combobox?.container
     ;(serviceLookupEditor as unknown as { value: unknown }).value = this.getCellValue(item, column)
     if (container) {
-      target.appendChild(container)
+      this.appendEditorChild(target, container)
     }
     ;(serviceLookupEditor as unknown as {
       changeSelect2: (handler: (e: Select2Event) => void) => void
@@ -784,7 +844,7 @@ export class IdevsGridEditController<
       target.textContent = value
       notifyCellChange()
     })
-    target.appendChild((stringEditor as unknown as RemovableEditor).domNode)
+    this.appendEditorChild(target, (stringEditor as unknown as RemovableEditor).domNode)
   }
 
   /**

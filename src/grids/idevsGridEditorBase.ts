@@ -606,13 +606,18 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
     this.slickGrid.render()
 
     const row = this.view.getLength() - 1
-    const firstEditableCell = this.slickGrid
-      .getColumns()
-      // Truthiness check (NOT `!== undefined`) so columns with explicit
-      // `editor: null` / `editor: false` (some Serenity column factories
-      // emit these to signal "no editor configured") are treated as
-      // non-editable.
-      .findIndex(col => !!col.editor && col.visible !== false)
+    // Use the SAME predicate as `isCellEditable` (line ~837) so the
+    // post-add focus respects the full editability contract — not just
+    // truthy-editor + visible, but ALSO excluding slick-reorder cells
+    // and `sourceItem.readOnly` columns. The prior weaker filter
+    // (`!!col.editor && col.visible !== false`) would land the cursor
+    // on a leading read-only or reorder column for grids that include
+    // one, and then `editActiveCell()` would be a no-op or worse,
+    // open an editor on a column that shouldn't be edited.
+    const columns = this.slickGrid.getColumns() as unknown as GridColumnArr
+    const firstEditableCell = columns.findIndex((_col, idx) =>
+      this.isCellEditable(row, idx, columns),
+    )
     this.slickGrid.setActiveCell(row, firstEditableCell > -1 ? firstEditableCell : 0)
     this.slickGrid.scrollRowIntoView(row, true)
     this.slickGrid.editActiveCell()

@@ -929,6 +929,69 @@ describe('IdevsGridEditorBase — getDeletedRows defensive copy (PR-4b round-3 #
   })
 })
 
+describe('IdevsGridEditorBase — addButtonClick first-editable-cell respects isCellEditable (PR-4b round-7 #2)', () => {
+  // Round 7 #2: prior code used a weaker predicate (`!!col.editor && visible !== false`)
+  // that ignored slick-reorder-cell + sourceItem.readOnly. Grids with
+  // a leading reorder/read-only column would land the post-add focus
+  // on a non-editable cell. Round-7 fix routes through the same
+  // `isCellEditable` predicate the keyboard navigation uses.
+  // Helper: addButtonClick calls `view.addItem(newRow)`. The test's
+  // makeProbe mock for `addItem` doesn't actually mutate the items
+  // array, so we have to seed items with one placeholder so that
+  // `view.getLength() - 1` returns 0 (the row index addButtonClick
+  // expects).
+  it('skips a leading slick-reorder column when picking first editable cell', () => {
+    const items: Record<string, unknown>[] = [{}] // seeded — see helper note
+    const probe = makeProbe({
+      columns: [
+        // Leading reorder column — has editor but cssClass marks it as
+        // a Slick reorder cell that should NOT receive focus.
+        { editor: () => undefined, visible: true, cssClass: 'slick-reorder-cell' },
+        { editor: () => undefined, field: 'name', visible: true, sourceItem: {} },
+      ],
+      items,
+    })
+    probe.slickGrid.getActiveCell = vi.fn(() => null)
+    probe.addButtonClick()
+    // The new active cell MUST be index 1 (the real editable column),
+    // NOT index 0 (the reorder cell).
+    expect(probe.slickGrid.setActiveCell).toHaveBeenCalledWith(0, 1)
+  })
+
+  it('skips a leading sourceItem.readOnly column when picking first editable cell', () => {
+    const items: Record<string, unknown>[] = [{}]
+    const probe = makeProbe({
+      columns: [
+        // Read-only column — has editor + visible, but sourceItem.readOnly
+        // marks it as non-editable. The weaker prior filter accepted it.
+        { editor: () => undefined, field: 'id', visible: true, sourceItem: { readOnly: true } },
+        { editor: () => undefined, field: 'name', visible: true, sourceItem: {} },
+      ],
+      items,
+    })
+    probe.slickGrid.getActiveCell = vi.fn(() => null)
+    probe.addButtonClick()
+    expect(probe.slickGrid.setActiveCell).toHaveBeenCalledWith(0, 1)
+  })
+
+  it('falls back to cell 0 when NO column is editable (prior behavior preserved)', () => {
+    const items: Record<string, unknown>[] = [{}]
+    const probe = makeProbe({
+      columns: [
+        // No editor at all on any column.
+        { visible: true, sourceItem: {} },
+        { visible: true, sourceItem: {} },
+      ],
+      items,
+    })
+    probe.slickGrid.getActiveCell = vi.fn(() => null)
+    probe.addButtonClick()
+    // findIndex returns -1 → fall back to cell 0 (the source's
+    // pattern; this is the "no editable cell" edge case).
+    expect(probe.slickGrid.setActiveCell).toHaveBeenCalledWith(0, 0)
+  })
+})
+
 describe('IdevsGridEditorBase — subscribe-after-destroy guard (PR-4b round-6 #6)', () => {
   // Round 6 #6: subscribeToRowChange/subscribeToAddButtonClick
   // previously pushed into arrays cleared by destroy() — silent
