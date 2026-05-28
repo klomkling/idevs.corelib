@@ -14,4 +14,6 @@ export * from './idevsSearchGrid'
 // Consumers using this subpath must have `@serenity-is/extensions`
 // resolvable in their dependency tree.
 //
-// The same applies to IdevsGridEditorBase (next batch).
+// The same applies to IdevsGridEditorBase, which is also subpath-only:
+//
+//   import { IdevsGridEditorBase } from '@idevs/corelib/grids/idevsGridEditorBase'

@@ -2,6 +2,7 @@ import {
   Authorization,
   Decorators,
   type ListRequest,
+  notifyError,
   type QuickFilter,
   type ToolButton,
   type Widget,
@@ -40,7 +41,10 @@ import { IdevsEntityGrid } from './idevsEntityGrid'
  *          findFirst result (could be null even with toolbar present).
  *       2. `e.target.closest('.slick-viewport')` in onClick — the
  *          click could originate from a row that is mid-detach.
- *       3. `e.target.parentElement` in onClick — same defensive check.
+ *       3. `e.target.closest('.slick-row')` in onClick — walks to the
+ *          actual row element rather than `parentElement`, which would
+ *          be the `.slick-cell` when cells contain nested formatter
+ *          markup (the round-2 review fix).
  *   - PromiseLike duck-type check uses `typeof candidate.then === 'function'`
  *     rather than `(x as PromiseLike).then` cast probe, which would
  *     TypeError if candidate is null/primitive.
@@ -192,8 +196,13 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
     return this.getFilterKeys()
   }
   /** @deprecated Use `setFilterKeys()`. */
-  set FilterKeys(filters: Record<string, unknown>) {
-    this.setFilterKeys(filters)
+  // Setter accepts `Readonly<...>` (wider than the canonical setFilterKeys
+  // signature) so the round-trip `grid.FilterKeys = grid.FilterKeys`
+  // type-checks — the getter returns `Readonly<...>` and a strict-TS
+  // consumer should not need to cast just to mirror state. The internal
+  // method spreads via Object.keys(...) which is safe on Readonly.
+  set FilterKeys(filters: Readonly<Record<string, unknown>>) {
+    this.setFilterKeys(filters as Record<string, unknown>)
   }
 
   /** @deprecated Use `getCriteriaKeys()` / `setCriteriaKeys()`. */
@@ -201,8 +210,11 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
     return this.getCriteriaKeys()
   }
   /** @deprecated Use `setCriteriaKeys()`. */
-  set CriteriaKeys(value: unknown[]) {
-    this.setCriteriaKeys(value)
+  // Setter accepts `readonly unknown[]` (wider than the canonical
+  // setCriteriaKeys signature) so round-trip `grid.CriteriaKeys =
+  // grid.CriteriaKeys` type-checks.
+  set CriteriaKeys(value: readonly unknown[]) {
+    this.setCriteriaKeys(value as unknown[])
   }
 
   /** @deprecated Use `setSearchValue()`. */
@@ -352,19 +364,33 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
     // would TypeError before reaching the .then access).
     const maybeThen = (dialogTypeOrPromise as { then?: unknown } | null)?.then
     if (typeof maybeThen === 'function') {
-      ;(dialogTypeOrPromise as PromiseLike<unknown>).then(dialogClass => {
-        this.openDialogFor(dialogClass, entityOrId)
-      })
+      ;(dialogTypeOrPromise as PromiseLike<unknown>).then(
+        dialogClass => this.openDialogFor(dialogClass, entityOrId),
+        // .then's second argument (NOT .catch chain) attaches the rejection
+        // handler to the same microtask hop, ensuring no transient
+        // unhandled-rejection event fires for chunk-load / dynamic-import
+        // failures on a code-split dialog module.
+        err => this.handleEditItemError(err, entityOrId),
+      )
       return
     }
-    this.openDialogFor(dialogTypeOrPromise, entityOrId)
+    try {
+      this.openDialogFor(dialogTypeOrPromise, entityOrId)
+    } catch (err) {
+      this.handleEditItemError(err, entityOrId)
+    }
   }
 
   /**
    * Instantiate a dialog class and route to its loadByIdAndOpenDialog
-   * entry point. Narrowed to IdevsEntityDialog<TRow> via structural
-   * typing — Serenity's DialogType is too loose at this point and the
-   * source already assumed loadByIdAndOpenDialog is present.
+   * entry point. Narrowed structurally — Serenity's DialogType is too
+   * loose at this point and the source already assumed
+   * loadByIdAndOpenDialog is present.
+   *
+   * `loadByIdAndOpenDialog` typically returns `Promise<void>` in real
+   * Serenity. If the returned value is thenable, we attach a rejection
+   * handler so 404 / network / validation failures surface to the user
+   * instead of becoming silent unhandled-rejection events.
    */
   private openDialogFor(dialogClass: unknown, entityOrId: string | number): void {
     type LoadableDialog = {
@@ -375,7 +401,31 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
     // `new ctor({})` mirrors Serenity's dialog-from-registry instantiation
     // pattern; ctors accept an empty options object for default props.
     const dialog = new ctor({}) as LoadableDialog
-    dialog.loadByIdAndOpenDialog(entityOrId, false)
+    const result = dialog.loadByIdAndOpenDialog(entityOrId, false) as unknown
+    const resultThen = (result as { then?: unknown } | null)?.then
+    if (typeof resultThen === 'function') {
+      ;(result as PromiseLike<unknown>).then(
+        () => undefined,
+        err => this.handleEditItemError(err, entityOrId),
+      )
+    }
+  }
+
+  /**
+   * Surface dialog-load / dialog-open failures via `notifyError` and log
+   * with a stable prefix so the failure is traceable to a user gesture.
+   * Override in subclasses to integrate with consumer-specific error
+   * channels.
+   */
+  protected handleEditItemError(err: unknown, entityOrId: string | number): void {
+    notifyError('Unable to open editor dialog.')
+    // Structured warn for traceability of user-gesture-triggered dialog
+    // failures (project policy: `no-console: warn`). Consumers can
+    // override handleEditItemError to route elsewhere.
+    console.warn(
+      `[IdevsSearchGrid] editItem(${String(entityOrId)}) failed to open dialog:`,
+      err,
+    )
   }
 
   // ---- Quick search toggling. ----

@@ -8,22 +8,11 @@ import {
   StringEditor,
 } from '@serenity-is/corelib'
 import type { ArgsCell, IEventData } from '@serenity-is/sleekgrid'
+import type { GridColumn } from './_columnShape'
 
-/**
- * Local structural alias for a SlickGrid column. We avoid importing
- * `Column` from `@serenity-is/sleekgrid` directly because the top-level
- * install (1.9.8) and the nested copy bundled with `@serenity-is/corelib`
- * (1.9.6) declare separate private fields on `Column`, so the two
- * `Column<any>` types are reported as incompatible across module
- * boundaries. The fields we actually USE are limited and stable across
- * those versions, so an inline structural shape is safe.
- */
-type GridColumn = {
-  field?: string
-  visible?: boolean
-  name?: string
-  sourceItem?: ColumnSourceItem
-}
+// Re-export the local structural shape used to be defined inline here.
+// See _columnShape.ts for the duplicate-sleekgrid rationale and the
+// shared shape's invariants.
 
 /**
  * In-cell editor controller for an EntityGrid.
@@ -98,9 +87,24 @@ type GridColumn = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see JSDoc above
 type IdevsGridEditControllerGrid = EntityGrid<any, any>
 
-/** Public constructor options. */
-export type IdevsGridEditControllerOptions = {
-  grid: IdevsGridEditControllerGrid
+/**
+ * Public constructor options.
+ *
+ * Generic on `TGrid` with the loose default. The default matches the
+ * historical untyped signature so existing call sites
+ * (`new IdevsGridEditController({ grid: this })`) continue to compile
+ * without changes; strict-TS consumers passing their own
+ * `EntityGrid<MyRow, MyOpts>` get the precise grid type back at use
+ * sites that read `controller`-private fields via subclassing.
+ *
+ * The controller's internals never read `TItem` / `P` off the grid type
+ * (they cast through `unknown` at the column / item boundary anyway),
+ * so widening or narrowing TGrid is purely a public-surface concern.
+ */
+export type IdevsGridEditControllerOptions<
+  TGrid extends IdevsGridEditControllerGrid = IdevsGridEditControllerGrid,
+> = {
+  grid: TGrid
 }
 
 /**
@@ -142,15 +146,10 @@ type SlickOptions = {
   enableCellNavigation?: boolean
 }
 
-type ColumnSourceItem = {
-  readOnly?: boolean
-  // `editorType` is typed `unknown` rather than `string` to stay structurally
-  // assignable from Serenity's `PropertyItem.editorType`, which is a union
-  // of `string | EditorClass | PromiseLike<EditorClass>`. We narrow to the
-  // string case (the only case the dispatcher handles) at the use site.
-  editorType?: unknown
-  editorParams?: Record<string, unknown>
-}
+// `ColumnSourceItem` moved to ./_columnShape.ts as `GridColumnSourceItem`
+// — see imports above. No local alias needed; use sites that previously
+// referenced `ColumnSourceItem` now go through `column.sourceItem`'s
+// inferred type from the shared shape.
 
 type RemovableEditor = { domNode: HTMLElement }
 
@@ -164,11 +163,17 @@ type Select2Event = {
 }
 
 @Decorators.registerClass('Idevs.CoreLib.IdevsGridEditController')
-export class IdevsGridEditController {
-  private readonly grid: IdevsGridEditControllerGrid
+export class IdevsGridEditController<
+  TGrid extends IdevsGridEditControllerGrid = IdevsGridEditControllerGrid,
+> {
+  private readonly grid: TGrid
   private allColumns: GridColumn[]
-  private readonly visibleColumns: GridColumn[]
-  private maxRows: number
+  // visibleColumns is NOT `readonly` — re-derived on every loadEditor /
+  // navigation so column-picker / setColumns() / setVisible() changes on
+  // the host grid don't leave the navigation primitives reading stale
+  // state. `maxRows` is also re-read inline (this.grid.getItems().length)
+  // at each use site for the same reason.
+  private visibleColumns: GridColumn[]
   private currentRow: number | null = null
   private currentCell: number | null = null
   private editable: boolean
@@ -195,7 +200,7 @@ export class IdevsGridEditController {
   /** Set to true after `destroy()` so late-firing events are silent. */
   private destroyed: boolean = false
 
-  constructor(opt: IdevsGridEditControllerOptions) {
+  constructor(opt: IdevsGridEditControllerOptions<TGrid>) {
     this.grid = opt.grid
 
     const opts = this.grid.slickGrid.getOptions() as SlickOptions
@@ -233,10 +238,20 @@ export class IdevsGridEditController {
       (_e, args) => this.handleActiveCellPositionChanged(args),
     )
 
+    // Initial snapshot. Refreshed lazily — see refreshColumnSnapshot()
+    // and inline `this.grid.getItems().length` reads at use sites.
+    this.refreshColumnSnapshot()
+  }
+
+  /**
+   * Re-read columns from SlickGrid. Called from the constructor and
+   * before navigation / dispatch so column-picker, dynamic visibility,
+   * and host-driven setColumns() changes are picked up.
+   */
+  private refreshColumnSnapshot(): void {
     // See loadEditor() for the duplicate-sleekgrid cast rationale.
     this.allColumns = this.grid.slickGrid.getColumns() as unknown as GridColumn[]
     this.visibleColumns = this.allColumns.filter(column => column.visible !== false)
-    this.maxRows = this.grid.getItems().length
   }
 
   /**
@@ -256,8 +271,14 @@ export class IdevsGridEditController {
     for (const { emitter, handler } of this.subscriptions) {
       try {
         emitter.unsubscribe(handler)
-      } catch {
-        /* swallow teardown errors — see Serenity dialog teardown pattern */
+      } catch (error) {
+        // Log + continue. A throwing `unsubscribe` typically indicates a
+        // handler-reference mismatch in our own `subscribe()` bookkeeping,
+        // which is a real bug worth surfacing — but we still want to drain
+        // remaining subscriptions during teardown. Matches the sibling
+        // pattern in IdevsGridEditorBase.cleanupEventListeners().
+        // eslint-disable-next-line no-console -- traceability for teardown bugs
+        console.warn('[IdevsGridEditController] subscription teardown threw:', error)
       }
     }
     this.subscriptions.length = 0
@@ -292,6 +313,12 @@ export class IdevsGridEditController {
       this.enterKey = false
       return
     }
+    // Refresh column snapshot so navigation reflects any setColumns() /
+    // column-picker changes since the last call. Read items length
+    // inline (NOT a constructor snapshot) so added/deleted rows show
+    // up in the row-overflow clamp below.
+    this.refreshColumnSnapshot()
+    const maxRows = this.grid.getItems().length
     let row = this.currentRow ?? 0
     let cell = this.currentCell ?? 0
     if (e.shiftKey) {
@@ -309,7 +336,7 @@ export class IdevsGridEditController {
       cell = this.nextCell(cell)
       if (cell >= this.grid.slickGrid.getHeader().childElementCount) {
         row++
-        if (row >= this.maxRows) {
+        if (row >= maxRows) {
           row--
           cell = this.lastEditableCell()
         } else {
@@ -444,6 +471,20 @@ export class IdevsGridEditController {
     this.allColumns = this.grid.slickGrid.getColumns() as unknown as GridColumn[]
     const column = this.allColumns[args.cell]
     if (!column || !column.sourceItem || column.sourceItem.readOnly) return
+    // `column.field` undefined would land every editor's write on
+    // `item["undefined"]` — a silent data-loss where the user sees the
+    // cell update via textContent but no real entity field receives
+    // the value. Bail early instead.
+    if (!column.field) {
+      // Misconfiguration signal: an editable column with no `field` is
+      // unusable. Log under the project's project-wide `no-console: warn`
+      // policy so consumers can find the offending column descriptor.
+      console.warn(
+        '[IdevsGridEditController] Column has editorType but no field; ignoring edit',
+        column,
+      )
+      return
+    }
 
     const item = this.grid.slickGrid.getDataItem(args.row) as Record<string, unknown>
     if (!this.cellNavigation && !this.enterKey) {
@@ -481,10 +522,19 @@ export class IdevsGridEditController {
       })
     }
 
+    // Boolean is a click-to-toggle on an in-cell span (no editor child),
+    // so we don't want the `with-editor` styling. For every other type,
+    // we only add the class if the renderer actually appended an editor
+    // child — `removeExistingEditor` strips it on toggle-off, so empty
+    // means "toggled off" and we should NOT leave the cell styled.
     if (editorType !== 'Boolean') {
-      targetElement.classList.add('with-editor')
       const firstChild = targetElement.firstElementChild as HTMLElement | null
-      if (firstChild) firstChild.focus()
+      if (firstChild) {
+        targetElement.classList.add('with-editor')
+        firstChild.focus()
+      } else {
+        targetElement.classList.remove('with-editor')
+      }
     }
 
     this.enterKey = false
@@ -494,12 +544,14 @@ export class IdevsGridEditController {
    * If the target already has a child, remove it (toggle-off). Returns
    * `true` if a removal happened — the caller should NOT proceed with
    * fresh editor creation in that case (matches the source's toggle
-   * behavior).
+   * behavior). Also strips the `with-editor` class so the cell doesn't
+   * keep editor styling after the editor child is gone.
    */
   private removeExistingEditor(target: HTMLElement): boolean {
     if (target.childElementCount === 0) return false
     const firstChild = target.firstElementChild as HTMLElement | null
     if (firstChild) firstChild.remove()
+    target.classList.remove('with-editor')
     return true
   }
 
@@ -560,20 +612,26 @@ export class IdevsGridEditController {
   private readonly renderBooleanEditor: IdevsCellEditorRender = ({
     target,
     item,
-    args,
     column,
     notifyCellChange,
   }) => {
     // Boolean is a click-to-toggle on a span — no editor widget to
     // instantiate or toggle-off behavior to replicate.
-    if (this.isReadonlyCell(args.cell)) return
+    //
+    // The readonly check that lived here previously (`isReadonlyCell(args.cell)`)
+    // was redundant — loadEditor already filters readOnly columns at
+    // line 469 via `column.sourceItem.readOnly` BEFORE dispatching here,
+    // AND it used `args.cell` (all-columns index) against the
+    // visibleColumns array (visible-only index), so for any hidden
+    // column it was checking the wrong row. Dropped.
+    if (!column.field) return
     const toggleTarget =
       target.tagName.toLowerCase() === 'span'
         ? target
         : target.querySelector<HTMLElement>('span')
     if (!toggleTarget) return
     toggleTarget.classList.toggle('checked')
-    item[column.field as string] = toggleTarget.classList.contains('checked')
+    item[column.field] = toggleTarget.classList.contains('checked')
     notifyCellChange()
   }
 

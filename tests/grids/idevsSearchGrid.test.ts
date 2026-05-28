@@ -363,6 +363,97 @@ describe('IdevsSearchGrid — onClick + authorization gating', () => {
   })
 })
 
+describe('IdevsSearchGrid — setSearchValue toolbar=undefined regression (PR-4b round-3 #20)', () => {
+  it('is a defensive no-op when the toolbar field itself is undefined', () => {
+    // The optional-chain `this.toolbar?.element?.findFirst(...)` was
+    // added so the grid can be used in test harnesses or pre-init
+    // scenarios where toolbar hasn't been wired. Previously covered:
+    // hideToolbar=true, findFirst → undefined, findFirst → {length:0}.
+    // Missing: toolbar itself undefined.
+    const probe = makeProbe()
+    probe.toolbar = undefined as unknown as typeof probe.toolbar
+    expect(() => probe.setSearchValue('x')).not.toThrow()
+  })
+})
+
+describe('IdevsSearchGrid — applyCriteriaParameter CustomData stickiness (PR-4b round-3 #21)', () => {
+  it('CustomData.Important is NOT cleared when criteria becomes empty (documented sticky)', () => {
+    // Source's CustomData = { Important: true } intentionally remains
+    // on view.params after criteria are cleared, so backends that read
+    // the flag continue to see the priority hint. This is parity with
+    // PowerACC's CsiSearchGrid; if consumers need to clear it, they
+    // must do so explicitly via the view.params handle.
+    const probe = makeProbe()
+    probe._criteriaKeys = ['Name', '=', 'x']
+    probe.applyCriteriaParameter()
+    expect(probe.view.params['CustomData']).toEqual({ Important: true })
+    probe._criteriaKeys = []
+    probe.applyCriteriaParameter()
+    // Criteria key removed:
+    expect(probe.view.params['Criteria']).toBeUndefined()
+    // CustomData.Important remains (sticky):
+    expect(probe.view.params['CustomData']).toEqual({ Important: true })
+  })
+})
+
+describe('IdevsSearchGrid — editItem unhandled rejection regression (PR-4b round-3 #1+#2)', () => {
+  it('rejected dialog Promise routes through handleEditItemError instead of bubbling', async () => {
+    const probe = makeProbe()
+    probe._editPermission = ''
+    const handleEditItemErrorSpy = vi.fn()
+    ;(probe as unknown as { handleEditItemError: typeof handleEditItemErrorSpy }).handleEditItemError =
+      handleEditItemErrorSpy
+    // Authorization.hasPermission returns true for empty permission in
+    // Serenity; we route through the dialog-load path.
+    const corelib = await import('@serenity-is/corelib')
+    const authSpy = vi.spyOn(corelib.Authorization, 'hasPermission').mockReturnValue(true)
+    const rejected = Promise.reject(new Error('chunk-load failed'))
+    // Swallow the unhandled-rejection that vitest sees from the
+    // already-rejected promise so the test runner doesn't fail. The
+    // production fix routes this through .then(_, onError) so consumer
+    // code never sees an unhandled rejection.
+    rejected.catch(() => {
+      /* swallow */
+    })
+    probe.getDialogType = () => rejected as unknown as Promise<unknown>
+    try {
+      probe.editItem('abc')
+      // Wait a microtask hop for the .then rejection branch to fire.
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(handleEditItemErrorSpy).toHaveBeenCalledTimes(1)
+      const [err, id] = handleEditItemErrorSpy.mock.calls[0]!
+      expect(err).toBeInstanceOf(Error)
+      expect(id).toBe('abc')
+    } finally {
+      authSpy.mockRestore()
+    }
+  })
+
+  it('synchronous dialog ctor throw routes through handleEditItemError', async () => {
+    const probe = makeProbe()
+    probe._editPermission = ''
+    const handleEditItemErrorSpy = vi.fn()
+    ;(probe as unknown as { handleEditItemError: typeof handleEditItemErrorSpy }).handleEditItemError =
+      handleEditItemErrorSpy
+    const corelib = await import('@serenity-is/corelib')
+    const authSpy = vi.spyOn(corelib.Authorization, 'hasPermission').mockReturnValue(true)
+    // Return a synchronous (non-promise) ctor that throws.
+    const ThrowingDialog = function () {
+      throw new Error('ctor crashed')
+    } as unknown as () => unknown
+    probe.getDialogType = () => ThrowingDialog
+    try {
+      probe.editItem('abc')
+      expect(handleEditItemErrorSpy).toHaveBeenCalledTimes(1)
+      const [err, id] = handleEditItemErrorSpy.mock.calls[0]!
+      expect(err).toBeInstanceOf(Error)
+      expect(id).toBe('abc')
+    } finally {
+      authSpy.mockRestore()
+    }
+  })
+})
+
 describe('IdevsSearchGrid — module export shape', () => {
   it('exports the abstract class as a constructor function with the methods on its prototype', () => {
     expect(typeof IdevsSearchGrid).toBe('function')

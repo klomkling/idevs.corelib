@@ -495,6 +495,179 @@ describe('IdevsGridEditController — custom renderer dispatch + XSS regression'
   })
 })
 
+describe('IdevsGridEditController — destroyed-guard (PR-4b round-3 #22)', () => {
+  // The earlier "loadEditor short-circuits when destroyed" test passed
+  // for the WRONG reason: destroy() clears the registry, so render was
+  // `undefined` from the map lookup. The guard at line 435
+  // (`if (this.destroyed || !this.editable)`) was never actually
+  // exercised. This regression test re-registers the renderer AFTER
+  // destroy() so the registry path is alive but the guard must still
+  // short-circuit.
+  it('loadEditor early-returns via the `destroyed` guard even when the renderer is registered', () => {
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: [{ field: 'name', visible: true, sourceItem: { editorType: 'Custom.X' } }],
+      items: [{ name: 'A' }],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    controller.destroy()
+    // Re-register the renderer AFTER destroy. cellEditorRegistry was
+    // cleared in destroy(), so registering here puts an entry back
+    // — but the `destroyed` flag is set, so the registerCellEditor
+    // call itself is harmless and the `loadEditor` guard takes over.
+    const render: IdevsCellEditorRender = vi.fn()
+    controller.registerCellEditor('Custom.X', render)
+    const internal = controller as unknown as { loadEditor(t: HTMLElement, a: unknown): void }
+    expect(() =>
+      internal.loadEditor.call(controller, document.createElement('div'), {
+        row: 0,
+        cell: 0,
+        grid: slickGrid,
+      } as Record<string, unknown>),
+    ).not.toThrow()
+    // Renderer MUST NOT be called — the `destroyed` guard fires first.
+    expect(render).not.toHaveBeenCalled()
+  })
+
+  it('destroy() logs subscription teardown errors (PR-4b round-3 #8)', () => {
+    const { grid, slickGrid } = makeFakeGrid({ editable: true, autoEdit: true })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    // Force the click emitter's unsubscribe to throw so we exercise the
+    // catch branch.
+    slickGrid.onClick.unsubscribe = vi.fn(() => {
+      throw new Error('unsubscribe failed')
+    })
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      controller.destroy()
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('subscription teardown threw'),
+        expect.any(Error),
+      )
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+})
+
+describe('IdevsGridEditController — column.field undefined guard (PR-4b round-3 #7)', () => {
+  it('loadEditor refuses to dispatch when column.field is undefined', () => {
+    // Misconfigured: a column with editorType but no field. The renderers
+    // would otherwise write item["undefined"] silently — the user sees
+    // the cell update via textContent but the entity field is never
+    // touched. Round-3 fix: bail at dispatch with a warn.
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: [{ visible: true, sourceItem: { editorType: 'Custom.X' } }], // no `field`
+      items: [{ name: 'A' }],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const customRender: IdevsCellEditorRender = vi.fn()
+    controller.registerCellEditor('Custom.X', customRender)
+
+    const targetCell = document.createElement('div')
+    slickGrid.getCellNode.mockReturnValue(targetCell)
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const clickHandler = slickGrid.onClick.subscribers[0]
+      clickHandler(
+        { target: targetCell } as unknown as Event,
+        { row: 0, cell: 0, grid: slickGrid } as Record<string, unknown>,
+      )
+      expect(customRender).not.toHaveBeenCalled()
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('editorType but no field'),
+        expect.anything(),
+      )
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+})
+
+describe('IdevsGridEditController — with-editor class toggle-off (PR-4b round-3 #14)', () => {
+  it('removeExistingEditor strips the with-editor class', () => {
+    const { grid } = makeFakeGrid({})
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const target = document.createElement('div')
+    target.classList.add('with-editor')
+    const child = document.createElement('input')
+    target.appendChild(child)
+    const removed = (
+      controller as unknown as { removeExistingEditor(t: HTMLElement): boolean }
+    ).removeExistingEditor(target)
+    expect(removed).toBe(true)
+    expect(target.childElementCount).toBe(0)
+    expect(target.classList.contains('with-editor')).toBe(false)
+  })
+
+  it('loadEditor does NOT add with-editor when the renderer appended no child (toggle-off case)', () => {
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: [{ field: 'name', visible: true, sourceItem: { editorType: 'Custom.X' } }],
+      items: [{ name: 'A' }],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    // Renderer that hits the toggle-off path: target already has a
+    // child, so removeExistingEditor returns true and the renderer
+    // short-circuits without appending anything.
+    const renderer: IdevsCellEditorRender = vi.fn(({ target }) => {
+      const removed =
+        (controller as unknown as { removeExistingEditor(t: HTMLElement): boolean }).removeExistingEditor(
+          target,
+        )
+      if (removed) return
+      target.appendChild(document.createElement('input'))
+    })
+    controller.registerCellEditor('Custom.X', renderer)
+
+    const targetCell = document.createElement('div')
+    // Pre-populate with a child so toggle-off fires.
+    const stale = document.createElement('span')
+    targetCell.appendChild(stale)
+    targetCell.classList.add('with-editor')
+    slickGrid.getCellNode.mockReturnValue(targetCell)
+
+    const clickHandler = slickGrid.onClick.subscribers[0]
+    clickHandler(
+      { target: targetCell } as unknown as Event,
+      { row: 0, cell: 0, grid: slickGrid } as Record<string, unknown>,
+    )
+    // Toggle-off ran: no child, no with-editor class.
+    expect(targetCell.childElementCount).toBe(0)
+    expect(targetCell.classList.contains('with-editor')).toBe(false)
+  })
+})
+
+describe('IdevsGridEditController — generic-parameterized usage compiles (PR-4b round-3 #24)', () => {
+  // The class was made generic (`<TGrid extends EntityGrid<any, any> = ...>`)
+  // in round 3. A consumer can now instantiate with their own grid
+  // type as a generic argument; this test exercises that the
+  // generic-parameter form works at runtime (the compile-time
+  // assertion lives in tests/types/).
+  it('accepts an explicit type parameter without affecting runtime behavior', () => {
+    const { grid } = makeFakeGrid({ editable: true, autoEdit: true })
+    type TypedGrid = ReturnType<typeof makeFakeGrid>['grid']
+    controller = new IdevsGridEditController<TypedGrid & object & { _hack?: never }>({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    expect(controller).toBeInstanceOf(IdevsGridEditController)
+  })
+})
+
 describe('IdevsGridEditController — module export shape', () => {
   it('exports the class as a constructor function with the public API methods', () => {
     expect(typeof IdevsGridEditController).toBe('function')

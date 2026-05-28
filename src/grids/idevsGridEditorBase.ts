@@ -8,6 +8,7 @@ import {
 } from '@serenity-is/corelib'
 import type { ArgsCell, FormatterContext, FormatterResult } from '@serenity-is/sleekgrid'
 import { GridEditorBase } from '@serenity-is/extensions'
+import type { GridColumn } from './_columnShape'
 
 const { getEnumText } = SlickFormatting
 
@@ -84,8 +85,9 @@ const { getEnumText } = SlickFormatting
  *     `Array<any>`.
  *
  *   - **DataItem cast**: source had `(item as any)[col.field]` reads in
- *     validation. The cast is now `Record<string, unknown>` with a
- *     local helper for safer narrowing.
+ *     validation. The cast is now `Record<string, unknown>` applied
+ *     at the use site (the indexing narrows acceptably; no separate
+ *     helper is currently warranted).
  *
  * @template TEntity Row entity type.
  * @template P Widget options type.
@@ -143,7 +145,11 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
   // ---- DeletedRows + IsFirstClicked (camelCase canonical + PascalCase shims) ----
 
   getDeletedRows(): readonly TEntity[] {
-    return this._deletedRows
+    // Defensive copy: `readonly` is a TypeScript-only marker; the runtime
+    // value is a real array and callers could `(arr as TEntity[]).push(...)`
+    // to mutate the internal state. Returning a fresh slice each call
+    // keeps the contract enforceable at runtime too.
+    return [...this._deletedRows]
   }
 
   getIsFirstClicked(): boolean {
@@ -396,7 +402,13 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
           if (this.slickGrid.getEditorLock().isActive()) {
             this.tryCommitEditor()
           }
-          if (!this.validate(currentItem, activeCell.row)) return false
+          if (!this.validate(currentItem, activeCell.row)) {
+            // Mark the validation failure so the upcoming
+            // onActiveCellChanged handler suppresses row-change
+            // notification and does NOT advance _currentActiveRow.
+            this._lastValidationFailed = true
+            return false
+          }
         }
         return true
       },
@@ -444,6 +456,7 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
       ) {
         const currentItem = this.slickGrid.getDataItem(activeCell.row) as TEntity
         if (!this.validate(currentItem, activeCell.row)) {
+          this._lastValidationFailed = true
           e?.stopImmediatePropagation?.()
           e?.preventDefault?.()
           return false
@@ -839,19 +852,40 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
     if (editor && typeof editor.focus === 'function') editor.focus()
   }
 
-  /** Commit the active cell editor. Returns false if the commit failed
-   * (which cancels the row navigation). */
+  /**
+   * Commit the active cell editor. Returns `false` if the commit failed
+   * (which cancels the row navigation).
+   *
+   * Distinguishes two failure modes:
+   *
+   *   - `commitCurrentEdit()` returns `false` — true cell-validation
+   *     rejection (the editor's own `validate()` returned an error).
+   *     Logged at info-level for traceability.
+   *   - `commitCurrentEdit()` throws — programmer / runtime error
+   *     (editor `applyValue` crashes, lock-state corruption, downstream
+   *     `onCellChange` subscriber throws). The in-flight value is
+   *     cancelled (otherwise the user's data could persist in a half-
+   *     committed state) AND the failure is surfaced via `notifyError`
+   *     so the user knows their edit didn't land.
+   */
   private tryCommitEditor(): boolean {
+    const lock = this.slickGrid.getEditorLock()
+    let committed: boolean
     try {
-      const lock = this.slickGrid.getEditorLock()
-      if (lock.isActive()) {
-        const committed = lock.commitCurrentEdit()
-        if (!committed) return false
-      }
-    } catch (validationError) {
-      // eslint-disable-next-line no-console
-      console.warn('[IdevsGridEditorBase] commitCurrentEdit threw:', validationError)
+      if (!lock.isActive()) return true
+      committed = lock.commitCurrentEdit()
+    } catch (commitError) {
+      // Surface programmer/runtime commit failures so the user-data-lost
+      // scenario is traceable. Project policy: `no-console: warn`.
+      console.warn('[IdevsGridEditorBase] commitCurrentEdit threw:', commitError)
       this.slickGrid.getEditorLock().cancelCurrentEdit()
+      notifyError('Unable to save the cell value. Please try again.')
+      return false
+    }
+    if (!committed) {
+      // Cell-level validation rejection. The editor itself displays the
+      // error; this log is telemetry-only, not user-facing.
+      console.warn('[IdevsGridEditorBase] commitCurrentEdit returned false (validation)')
       return false
     }
     return true
@@ -911,11 +945,5 @@ type AddListenerEvent = {
   preventDefault?: () => void
 }
 
-/** Locally narrowed Column[] alias for isCellEditable — same
- * duplicate-sleekgrid rationale as IdevsGridEditController. */
-type GridColumnArr = {
-  editor?: unknown
-  visible?: boolean
-  cssClass?: string
-  sourceItem?: unknown
-}[]
+/** Local alias for the shared GridColumn[] shape. See _columnShape.ts. */
+type GridColumnArr = GridColumn[]
