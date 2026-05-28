@@ -102,6 +102,14 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
   private _currentActiveRow: number | null = null
   private _lastValidationFailed: boolean = false
   private _deletedRows: TEntity[] = []
+  /**
+   * Set to `true` by `destroy()` so:
+   *   1. `subscribeToRowChange` / `subscribeToAddButtonClick` reject
+   *      new subscriptions with a warn (silent never-fires is worse
+   *      than a clear error signal at registration time).
+   *   2. Notify methods short-circuit any late-firing events.
+   */
+  private _destroyed: boolean = false
 
   private readonly _rowChangeSubscribers: ((
     oldRow: number,
@@ -179,11 +187,32 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
       try {
         return structuredClone(this._deletedRows) as TEntity[]
       } catch (cloneErr) {
-        console.warn(
-          '[IdevsGridEditorBase] getDeletedRows: structuredClone failed (non-cloneable TEntity?); returning shallow copy:',
-          cloneErr,
-        )
-        return [...this._deletedRows]
+        // Narrowed to DataCloneError only — a `catch (cloneErr)` without
+        // this check would also swallow OutOfMemoryError-equivalents,
+        // future Proxy-trap throws on `_deletedRows`, or any unrelated
+        // bug, masking it as a cloneability issue. Real DataCloneError
+        // → shallow fallback. Anything else → rethrow so the actual
+        // failure surfaces.
+        //
+        // Two matching patterns:
+        //   - browsers + Node 17+: throw a `DOMException` with
+        //     `name === 'DataCloneError'`.
+        //   - jsdom + some polyfills: throw a different Error subclass
+        //     that still carries `name === 'DataCloneError'`.
+        // Both are accepted by the structural check.
+        const isCloneError =
+          (typeof DOMException !== 'undefined' &&
+            cloneErr instanceof DOMException &&
+            cloneErr.name === 'DataCloneError') ||
+          (cloneErr instanceof Error && cloneErr.name === 'DataCloneError')
+        if (isCloneError) {
+          console.warn(
+            '[IdevsGridEditorBase] getDeletedRows: structuredClone failed (non-cloneable TEntity?); returning shallow copy:',
+            cloneErr,
+          )
+          return [...this._deletedRows]
+        }
+        throw cloneErr
       }
     }
     return [...this._deletedRows]
@@ -213,6 +242,16 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
   // ---- Subscriber registries ----
 
   public subscribeToAddButtonClick(callback: () => void): () => void {
+    // Subscribe-after-destroy was previously silent (the callback was
+    // pushed onto an array that the destroy() teardown had already
+    // emptied; no further events would fire). Now we explicitly warn
+    // and return a no-op unsubscribe so the caller has a clear signal.
+    if (this._destroyed) {
+      console.warn(
+        '[IdevsGridEditorBase] subscribeToAddButtonClick called after destroy() — callback will never fire',
+      )
+      return () => undefined
+    }
     this._addButtonClickSubscribers.push(callback)
     return () => {
       const idx = this._addButtonClickSubscribers.indexOf(callback)
@@ -223,6 +262,13 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
   public subscribeToRowChange(
     callback: (oldRow: number, newRow: number, oldItem: TEntity, newItem: TEntity) => void,
   ): () => void {
+    // See subscribeToAddButtonClick for the post-destroy rationale.
+    if (this._destroyed) {
+      console.warn(
+        '[IdevsGridEditorBase] subscribeToRowChange called after destroy() — callback will never fire',
+      )
+      return () => undefined
+    }
     this._rowChangeSubscribers.push(callback)
     return () => {
       const idx = this._rowChangeSubscribers.indexOf(callback)
@@ -583,13 +629,31 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
     const item = this.view.getItem(row)
     if (!item) return
 
-    this._deletedRows.push(item)
+    // Transactional delete: ONLY push onto `_deletedRows` after
+    // `view.deleteItem(...)` has succeeded. The prior ordering
+    // (push-then-delete) was a silent-data-corruption hazard — if
+    // `view.deleteItem` (or any subsequent grid call) threw, the
+    // _deletedRows array would retain a phantom row that was never
+    // actually removed from the view, so the next save would ship a
+    // delete request for an entity the user still sees rendered.
     const idProperty = this.getIdProperty()
     const idValue = (item as Record<string, unknown>)[idProperty]
-    this.view.deleteItem(idValue as unknown as never)
-    this.slickGrid.invalidate()
-    this.slickGrid.updateRowCount()
-    this.slickGrid.render()
+    try {
+      this.view.deleteItem(idValue as unknown as never)
+      this.slickGrid.invalidate()
+      this.slickGrid.updateRowCount()
+      this.slickGrid.render()
+    } catch (err) {
+      console.warn(
+        '[IdevsGridEditorBase] deleteCurrentRow: view/grid mutation failed; row NOT added to deletedRows:',
+        err,
+      )
+      // Re-throw so the caller / host sees the failure — the row is
+      // still in the view, and the controller's internal state has
+      // NOT been mutated.
+      throw err
+    }
+    this._deletedRows.push(item)
 
     if (this.view.getLength() > 0) {
       const newRow = Math.max(0, row - 1)
@@ -955,6 +1019,11 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
   // ---- Teardown ----
 
   override destroy(): void {
+    // Flag must be set FIRST so any callbacks (including subscriber
+    // cleanups that re-attempt subscription on teardown) see the
+    // post-destroy state and reject with a warn rather than push into
+    // arrays we're about to clear.
+    this._destroyed = true
     this._rowChangeSubscribers.length = 0
     this._addButtonClickSubscribers.length = 0
     for (const cleanup of this.eventCleanup) {

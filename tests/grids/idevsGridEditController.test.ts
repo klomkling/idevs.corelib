@@ -875,6 +875,218 @@ describe('IdevsGridEditController — generic-parameterized usage compiles (PR-4
   })
 })
 
+describe('IdevsGridEditController — handleKeyDown Tab/Enter happy paths (PR-4b round-6 #3)', () => {
+  // Round 6 #3 promoted this from "deferred test debt" to must-add.
+  // After 3 rounds of deferral, the keystroke navigation paths
+  // (next/prev/wrap/clamp) had ZERO behavioral coverage — only the
+  // try/catch from round-5 was tested. These tests drive the real
+  // handler via the captured subscriber and assert the row/cell
+  // selection after navigation.
+  function buildKeyDownProbe(opts: {
+    columns: { field?: string; visible?: boolean; sourceItem?: { readOnly?: boolean } }[]
+    items: unknown[]
+    currentRow?: number
+    currentCell?: number
+  }) {
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: opts.columns,
+      items: opts.items as Record<string, unknown>[],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    // Inject currentRow / currentCell so handleKeyDown has a starting
+    // point. The real grid would set these via onActiveCellChanged.
+    ;(controller as unknown as { currentRow: number | null }).currentRow = opts.currentRow ?? 0
+    ;(controller as unknown as { currentCell: number | null }).currentCell = opts.currentCell ?? 0
+    return { slickGrid, notifyMock: slickGrid.onActiveCellChanged.notify as ReturnType<typeof vi.fn> }
+  }
+
+  it('Tab advances to next editable cell within the same row', () => {
+    const { slickGrid } = buildKeyDownProbe({
+      columns: [
+        { field: 'a', visible: true, sourceItem: {} },
+        { field: 'b', visible: true, sourceItem: {} },
+      ],
+      items: [{ a: 1, b: 2 }],
+      currentRow: 0,
+      currentCell: 0,
+    })
+    const onActiveCellChangedNotify = vi.fn()
+    slickGrid.onActiveCellChanged.notify = onActiveCellChangedNotify
+    const keyHandler = slickGrid.onKeyDown.subscribers[0]
+    keyHandler(
+      {
+        key: 'Tab',
+        shiftKey: false,
+        preventDefault: () => undefined,
+        stopImmediatePropagation: () => undefined,
+      },
+      { row: 0, cell: 0 } as Record<string, unknown>,
+    )
+    expect(onActiveCellChangedNotify).toHaveBeenCalledTimes(1)
+    const notified = onActiveCellChangedNotify.mock.calls[0]![0] as { row: number; cell: number }
+    expect(notified.row).toBe(0)
+    expect(notified.cell).toBe(1)
+  })
+
+  it('Tab wraps to the next row when at the end of the current row', () => {
+    const { slickGrid } = buildKeyDownProbe({
+      columns: [
+        { field: 'a', visible: true, sourceItem: {} },
+        { field: 'b', visible: true, sourceItem: {} },
+      ],
+      items: [
+        { a: 1, b: 2 },
+        { a: 3, b: 4 },
+      ],
+      currentRow: 0,
+      currentCell: 1, // at last editable cell of row 0
+    })
+    const onActiveCellChangedNotify = vi.fn()
+    slickGrid.onActiveCellChanged.notify = onActiveCellChangedNotify
+    const keyHandler = slickGrid.onKeyDown.subscribers[0]
+    keyHandler(
+      {
+        key: 'Tab',
+        shiftKey: false,
+        preventDefault: () => undefined,
+        stopImmediatePropagation: () => undefined,
+      },
+      { row: 0, cell: 1 } as Record<string, unknown>,
+    )
+    expect(onActiveCellChangedNotify).toHaveBeenCalledTimes(1)
+    const notified = onActiveCellChangedNotify.mock.calls[0]![0] as { row: number; cell: number }
+    expect(notified.row).toBe(1)
+    expect(notified.cell).toBe(0)
+  })
+
+  it('Shift+Tab moves to previous editable cell within the same row', () => {
+    const { slickGrid } = buildKeyDownProbe({
+      columns: [
+        { field: 'a', visible: true, sourceItem: {} },
+        { field: 'b', visible: true, sourceItem: {} },
+      ],
+      items: [{ a: 1, b: 2 }],
+      currentRow: 0,
+      currentCell: 1,
+    })
+    const onActiveCellChangedNotify = vi.fn()
+    slickGrid.onActiveCellChanged.notify = onActiveCellChangedNotify
+    const keyHandler = slickGrid.onKeyDown.subscribers[0]
+    keyHandler(
+      {
+        key: 'Tab',
+        shiftKey: true,
+        preventDefault: () => undefined,
+        stopImmediatePropagation: () => undefined,
+      },
+      { row: 0, cell: 1 } as Record<string, unknown>,
+    )
+    const notified = onActiveCellChangedNotify.mock.calls[0]![0] as { row: number; cell: number }
+    expect(notified.row).toBe(0)
+    expect(notified.cell).toBe(0)
+  })
+
+  it('Tab on the last cell of the last row clamps to last editable cell (does not overflow)', () => {
+    const { slickGrid } = buildKeyDownProbe({
+      columns: [
+        { field: 'a', visible: true, sourceItem: {} },
+        { field: 'b', visible: true, sourceItem: {} },
+      ],
+      items: [{ a: 1, b: 2 }],
+      currentRow: 0,
+      currentCell: 1,
+    })
+    const onActiveCellChangedNotify = vi.fn()
+    slickGrid.onActiveCellChanged.notify = onActiveCellChangedNotify
+    const keyHandler = slickGrid.onKeyDown.subscribers[0]
+    keyHandler(
+      {
+        key: 'Tab',
+        shiftKey: false,
+        preventDefault: () => undefined,
+        stopImmediatePropagation: () => undefined,
+      },
+      { row: 0, cell: 1 } as Record<string, unknown>,
+    )
+    // maxRows == 1 (single item); production clamps to last row + last
+    // editable cell.
+    const notified = onActiveCellChangedNotify.mock.calls[0]![0] as { row: number; cell: number }
+    expect(notified.row).toBe(0)
+    expect(notified.cell).toBe(1)
+  })
+
+  it('args are NOT mutated when notify throws (round-6 #5 partial-mutation regression)', () => {
+    // Round 6 #5: previously `args.row = row; args.cell = cell` ran
+    // BEFORE notify(). On notify throw, the args object retained the
+    // new values. Fix: assign only on success path AFTER notify
+    // returns.
+    const { slickGrid } = buildKeyDownProbe({
+      columns: [
+        { field: 'a', visible: true, sourceItem: {} },
+        { field: 'b', visible: true, sourceItem: {} },
+      ],
+      items: [{ a: 1, b: 2 }],
+      currentRow: 0,
+      currentCell: 0,
+    })
+    slickGrid.onActiveCellChanged.notify = vi.fn(() => {
+      throw new Error('listener crashed')
+    })
+    const argsObject = { row: 0, cell: 0 } as Record<string, unknown>
+    const keyHandler = slickGrid.onKeyDown.subscribers[0]
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      keyHandler(
+        {
+          key: 'Tab',
+          shiftKey: false,
+          preventDefault: () => undefined,
+          stopImmediatePropagation: () => undefined,
+        },
+        argsObject,
+      )
+      // notify threw → args MUST NOT have been mutated. Original
+      // {row: 0, cell: 0} survives.
+      expect(argsObject.row).toBe(0)
+      expect(argsObject.cell).toBe(0)
+      expect(warnSpy).toHaveBeenCalled()
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+})
+
+describe('IdevsGridEditController — hasField runtime predicate (PR-4b round-6 #7)', () => {
+  // Round 6 #7: hasField was statically asserted in tests/types/ but
+  // never runtime-tested. A refactor relaxing `length > 0` to `field != null`
+  // would have passed all tests. Round-6 also tightened the predicate
+  // to `trim().length > 0` (rejects whitespace-only); cover that.
+  it('rejects undefined, null-via-cast, empty, whitespace-only fields', async () => {
+    const { hasField } = await import('../../src/grids/_columnShape')
+    expect(hasField({})).toBe(false)
+    expect(hasField({ field: undefined })).toBe(false)
+    expect(hasField({ field: '' })).toBe(false)
+    expect(hasField({ field: '   ' })).toBe(false)
+    expect(hasField({ field: '\t\n' })).toBe(false)
+  })
+  it('accepts non-empty trimmed field names', async () => {
+    const { hasField } = await import('../../src/grids/_columnShape')
+    expect(hasField({ field: 'name' })).toBe(true)
+    expect(hasField({ field: '  name  ' })).toBe(true) // whitespace ON THE SIDES is fine
+  })
+  it('is exported from idevsGridEditController public surface (round-6 #8)', async () => {
+    const mod = (await import('../../src/grids/idevsGridEditController')) as unknown as {
+      hasField?: (c: { field?: string }) => boolean
+    }
+    expect(typeof mod.hasField).toBe('function')
+    expect(mod.hasField!({ field: 'x' })).toBe(true)
+  })
+})
+
 describe('IdevsGridEditController — module export shape', () => {
   it('exports the class as a constructor function with the public API methods', () => {
     expect(typeof IdevsGridEditController).toBe('function')

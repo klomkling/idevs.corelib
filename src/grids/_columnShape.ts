@@ -102,5 +102,10 @@ export type GridColumnWithField = GridColumn & { field: string }
  *     item[column.field] = value
  */
 export function hasField(column: GridColumn): column is GridColumnWithField {
-  return typeof column.field === 'string' && column.field.length > 0
+  // `trim().length > 0` (not just `length > 0`) so whitespace-only
+  // field names like `'   '` are rejected too — `item['   '] = value`
+  // is structurally the same silent-write bug as `item["undefined"]`,
+  // just with a different bogus key. The `trim()` cost is negligible
+  // (called once per cell-edit dispatch, not per render).
+  return typeof column.field === 'string' && column.field.trim().length > 0
 }

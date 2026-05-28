@@ -684,11 +684,12 @@ describe('IdevsGridEditorBase — _lastValidationFailed regression (PR-4b round-
     // refactor that flips the condition (e.g. `&& this._lastValidationFailed`)
     // would fail this test.
     const probe = makeProbe()
-    const capturedHandlers: ((e: unknown, args: unknown) => void)[] = []
-    // Stub addEventListener to capture the onActiveCellChanged handler
-    // when setupGridEventHandlers calls it. We need to find the second
-    // capture (the active-cell-changed one) — addEventListener is
-    // called for onBeforeEditCell first, then onActiveCellChanged.
+    // Round-6 #9: replaced the round-5 index-based capture
+    // (`capturedHandlers[1]`) with a name-based map. The previous
+    // approach assumed `setupGridEventHandlers` registered handlers
+    // in a fixed order; reordering the source would silently capture
+    // the wrong handler and let the test pass for the wrong reason.
+    const capturedByName: Record<string, (e: unknown, args: unknown) => void> = {}
     ;(probe as unknown as {
       addEventListener: (
         target: unknown,
@@ -697,17 +698,14 @@ describe('IdevsGridEditorBase — _lastValidationFailed regression (PR-4b round-
       ) => void
     }).addEventListener = (
       _target: unknown,
-      _eventName: string,
+      eventName: string,
       handler: (e: unknown, args: unknown) => void,
     ) => {
-      capturedHandlers.push(handler)
+      capturedByName[eventName] = handler
     }
-    // Invoke setupGridEventHandlers via the prototype so the production
-    // wiring captures the real handler closure.
     ;(probe as unknown as { setupGridEventHandlers(): void }).setupGridEventHandlers()
-    // The second-registered handler is onActiveCellChanged.
-    expect(capturedHandlers.length).toBeGreaterThanOrEqual(2)
-    const onActiveCellChangedHandler = capturedHandlers[1]!
+    const onActiveCellChangedHandler = capturedByName['onActiveCellChanged']!
+    expect(typeof onActiveCellChangedHandler).toBe('function')
 
     // Prime state + subscribers.
     probe._currentActiveRow = 5
@@ -928,6 +926,89 @@ describe('IdevsGridEditorBase — getDeletedRows defensive copy (PR-4b round-3 #
       ;(globalThis as { structuredClone?: typeof structuredClone }).structuredClone =
         originalStructuredClone
     }
+  })
+})
+
+describe('IdevsGridEditorBase — subscribe-after-destroy guard (PR-4b round-6 #6)', () => {
+  // Round 6 #6: subscribeToRowChange/subscribeToAddButtonClick
+  // previously pushed into arrays cleared by destroy() — silent
+  // never-fires. Round-6 fix adds a destroyed flag check.
+  it('subscribeToRowChange after destroy warns + returns no-op unsubscribe', () => {
+    const probe = makeProbe()
+    probe.destroy()
+    const cb = vi.fn()
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const unsub = probe.subscribeToRowChange(cb)
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('subscribeToRowChange called after destroy()'),
+      )
+      // Returned function is a no-op (must not throw).
+      expect(() => unsub()).not.toThrow()
+      // Callback was NOT pushed onto the internal array.
+      expect(probe._rowChangeSubscribers.length).toBe(0)
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it('subscribeToAddButtonClick after destroy warns + returns no-op unsubscribe', () => {
+    const probe = makeProbe()
+    probe.destroy()
+    const cb = vi.fn()
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const unsub = probe.subscribeToAddButtonClick(cb)
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('subscribeToAddButtonClick called after destroy()'),
+      )
+      expect(() => unsub()).not.toThrow()
+      expect(probe._addButtonClickSubscribers.length).toBe(0)
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+})
+
+describe('IdevsGridEditorBase — deleteCurrentRow transactional rollback (PR-4b round-6 #1)', () => {
+  // Round 6 #1 (the most-severe finding): prior ordering pushed onto
+  // `_deletedRows` BEFORE `view.deleteItem`. If view.deleteItem (or
+  // any subsequent grid mutation) threw, the controller kept a
+  // phantom delete entry → on save, the server got a delete request
+  // for an entity the user could still see in the grid.
+  //
+  // Round-6 fix: push onto `_deletedRows` AFTER all view/grid
+  // mutations succeed. On throw, _deletedRows stays unchanged + the
+  // caller sees the original error.
+  it('does NOT add row to _deletedRows when view.deleteItem throws', () => {
+    const items = [{ id: 5, name: 'A' }]
+    const probe = makeProbe({ items })
+    probe.slickGrid.getActiveCell = vi.fn(() => ({ row: 0, cell: 0 }))
+    probe.view.deleteItem = vi.fn(() => {
+      throw new Error('view corrupt')
+    })
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(() => probe.deleteCurrentRow()).toThrow(/view corrupt/)
+      // _deletedRows must NOT contain the phantom row.
+      expect(probe._deletedRows).toEqual([])
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('view/grid mutation failed'),
+        expect.any(Error),
+      )
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it('adds row to _deletedRows when view.deleteItem succeeds', () => {
+    // Sanity: the rollback fix must not break the happy path.
+    const items = [{ id: 5, name: 'A' }]
+    const probe = makeProbe({ items })
+    probe.slickGrid.getActiveCell = vi.fn(() => ({ row: 0, cell: 0 }))
+    probe.deleteCurrentRow()
+    expect(probe._deletedRows).toEqual([{ id: 5, name: 'A' }])
+    expect(probe.view.deleteItem).toHaveBeenCalledWith(5)
   })
 })
 

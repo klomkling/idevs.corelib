@@ -358,11 +358,14 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
 
   protected override editItem(entityOrId: string | number): void {
     if (!Authorization.hasPermission(this._editPermission)) {
-      // Silent return preserved (the source did the same) — but log at
-      // debug-level so misconfigured `_editPermission` (e.g. empty string
-      // → unintentional gate) is traceable. Consumers wanting a
-      // user-visible signal can override `editItem` directly.
-      console.debug(
+      // Silent return preserved (the source did the same) — but log so
+      // misconfigured `_editPermission` (e.g. empty string → unintentional
+      // gate) is traceable. Using `console.info` rather than `console.debug`
+      // because DevTools "Default levels" filter hides Verbose/Debug,
+      // which would defeat the traceability intent in production
+      // diagnostics. Consumers wanting a user-visible signal can
+      // override `editItem` directly.
+      console.info(
         `[IdevsSearchGrid] editItem(${String(entityOrId)}) denied: permission '${this._editPermission}' not granted`,
       )
       return

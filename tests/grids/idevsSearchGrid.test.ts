@@ -618,26 +618,28 @@ describe('IdevsSearchGrid — safe-wrap secondary failure (PR-4b round-5 #4)', (
   })
 })
 
-describe('IdevsSearchGrid — permission-denial log (PR-4b round-5 #8)', () => {
+describe('IdevsSearchGrid — permission-denial log (PR-4b round-5 #8 + round-6 #2)', () => {
   // Round 5 #8: editItem returned silently on permission denial (no
-  // log, no toast). Round-5 fix added a console.debug so misconfigured
-  // _editPermission is traceable. The silent return is preserved as
-  // user-visible behavior for consumers; they can override editItem
-  // for a different UX.
-  it('logs debug when Authorization.hasPermission denies', async () => {
+  // log, no toast). Round-5 fix added a log so misconfigured
+  // _editPermission is traceable.
+  // Round 6 #2: that round-5 log used `console.debug`, which DevTools
+  // hides by default ("Default levels" filter). Production consumers
+  // diagnosing "edit button does nothing" wouldn't see it. Promoted
+  // to `console.info` (visible in the default level set).
+  it('logs at console.info level when Authorization.hasPermission denies', async () => {
     const probe = makeProbe()
     probe._editPermission = 'Foo:Edit'
     const corelib = await import('@serenity-is/corelib')
     const authSpy = vi.spyOn(corelib.Authorization, 'hasPermission').mockReturnValue(false)
-    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {})
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
     try {
       probe.editItem('id-1')
-      expect(debugSpy).toHaveBeenCalledWith(
+      expect(infoSpy).toHaveBeenCalledWith(
         expect.stringContaining("permission 'Foo:Edit' not granted"),
       )
     } finally {
       authSpy.mockRestore()
-      debugSpy.mockRestore()
+      infoSpy.mockRestore()
     }
   })
 })

@@ -10,6 +10,14 @@ import {
 import type { ArgsCell, IEventData } from '@serenity-is/sleekgrid'
 import { hasField, type GridColumn, type GridColumnWithField } from './_columnShape'
 
+// Re-export `hasField` + `GridColumnWithField` as part of the public
+// editor-controller surface so consumers writing custom renderers via
+// `registerCellEditor(...)` can defensively re-narrow `column.field`
+// using the same predicate the dispatcher uses internally. Keeping
+// `_columnShape.ts` itself `@internal` (not re-exported from the
+// barrel) but exposing the two consumer-facing pieces here.
+export { hasField, type GridColumnWithField }
+
 // Re-export the local structural shape used to be defined inline here.
 // See _columnShape.ts for the duplicate-sleekgrid rationale and the
 // shared shape's invariants.
@@ -369,10 +377,19 @@ export class IdevsGridEditController<
           }
         }
       }
+      // Args mutation deferred to the success path: capture row/cell
+      // locally, build a copy for notify(), and only commit back to
+      // the SlickGrid-owned `args` object AFTER notify() returns
+      // cleanly. If notify() throws, the original args (caller-owned)
+      // is left untouched — downstream listeners that read args don't
+      // see a half-applied navigation state.
+      this.enterKey = true
+      const notifyArgs = { ...args, row, cell }
+      ;(this.grid.slickGrid.onActiveCellChanged as unknown as SlickEventEmitter).notify(
+        notifyArgs as ArgsCell,
+      )
       args.row = row
       args.cell = cell
-      this.enterKey = true
-      ;(this.grid.slickGrid.onActiveCellChanged as unknown as SlickEventEmitter).notify(args)
     } catch (err) {
       console.warn(
         '[IdevsGridEditController] handleKeyDown threw — keystroke navigation aborted:',

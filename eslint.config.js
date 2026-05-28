@@ -65,6 +65,7 @@ export default [
         FileReader: 'readonly',
         getComputedStyle: 'readonly',
         structuredClone: 'readonly',
+        DOMException: 'readonly',
         // Timers
         setTimeout: 'readonly',
         setInterval: 'readonly',
