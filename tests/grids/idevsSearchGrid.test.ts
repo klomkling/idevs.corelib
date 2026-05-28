@@ -396,6 +396,72 @@ describe('IdevsSearchGrid — applyCriteriaParameter CustomData stickiness (PR-4
   })
 })
 
+describe('IdevsSearchGrid — fulfillment-handler throw routes through safeHandleEditItemError (round-9 #2)', () => {
+  // Round-9 #2 (Copilot): when getDialogType() resolves successfully,
+  // the .then() fulfillment handler calls openDialogFor(). If that
+  // synchronously throws (dialog ctor crash, structural mismatch),
+  // the throw rejects the promise returned by .then() — which has
+  // NO further rejection handler, so it surfaces as an unhandled
+  // rejection. Fix: wrap the fulfillment handler in its own
+  // try/catch and route exceptions through safeHandleEditItemError
+  // with phase='dialog-open'.
+  it('synchronous throw inside Promise fulfillment routes through handleEditItemError', async () => {
+    const probe = makeProbe()
+    probe._editPermission = ''
+    const handleEditItemErrorSpy = vi.fn()
+    ;(probe as unknown as { handleEditItemError: typeof handleEditItemErrorSpy }).handleEditItemError =
+      handleEditItemErrorSpy
+    const corelib = await import('@serenity-is/corelib')
+    const authSpy = vi.spyOn(corelib.Authorization, 'hasPermission').mockReturnValue(true)
+    // Resolve to a ctor that THROWS — emulates a dialog whose
+    // constructor crashes (e.g., a Serenity widget init throw).
+    const ThrowingCtor = function () {
+      throw new Error('dialog ctor crashed')
+    } as unknown as new () => unknown
+    const resolved = Promise.resolve(ThrowingCtor)
+    probe.getDialogType = () => resolved as unknown as Promise<unknown>
+    try {
+      probe.editItem('id-1')
+      // Wait for both the .then microtask AND the secondary
+      // safeHandleEditItemError sync invocation.
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(handleEditItemErrorSpy).toHaveBeenCalledTimes(1)
+      const [, , phase] = handleEditItemErrorSpy.mock.calls[0]!
+      // phase MUST be 'dialog-open' (the ctor-crash phase), NOT
+      // 'dialog-load' (which is for the Promise itself rejecting).
+      expect(phase).toBe('dialog-open')
+    } finally {
+      authSpy.mockRestore()
+    }
+  })
+
+  it('throwing fulfillment does NOT produce an unhandled rejection (round-9 #2 e2e)', async () => {
+    // End-to-end: the test runner would surface an unhandled
+    // rejection as a test failure. The fact that this test passes
+    // — with no `await`-chained handler on the editItem call —
+    // proves the .then's returned promise is not rejecting outward.
+    const probe = makeProbe()
+    probe._editPermission = ''
+    const corelib = await import('@serenity-is/corelib')
+    const authSpy = vi.spyOn(corelib.Authorization, 'hasPermission').mockReturnValue(true)
+    const ThrowingCtor = function () {
+      throw new Error('dialog ctor crashed')
+    } as unknown as new () => unknown
+    probe.getDialogType = () => Promise.resolve(ThrowingCtor) as unknown as Promise<unknown>
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(() => probe.editItem('id-2')).not.toThrow()
+      await new Promise(resolve => setTimeout(resolve, 0))
+      // Should have logged via the default safeHandleEditItemError
+      // path (handleEditItemError default implementation).
+      expect(warnSpy).toHaveBeenCalled()
+    } finally {
+      authSpy.mockRestore()
+      warnSpy.mockRestore()
+    }
+  })
+})
+
 describe('IdevsSearchGrid — editItem unhandled rejection regression (PR-4b round-3 #1+#2)', () => {
   it('rejected dialog Promise routes through handleEditItemError instead of bubbling', async () => {
     const probe = makeProbe()

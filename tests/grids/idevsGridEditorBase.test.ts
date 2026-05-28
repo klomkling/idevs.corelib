@@ -783,22 +783,32 @@ describe('IdevsGridEditorBase — _lastValidationFailed regression (PR-4b round-
   })
 
   it('next onActiveCellChanged after the flag resets DOES advance + notify (PR-4b round-5 #2)', () => {
-    // Captures the REAL handler (same pattern as above) and verifies
-    // the post-reset path: flag=false → notify fires + active row
-    // advances.
+    // Round-9 #3 (Copilot): the round-5 #2 follow-on test still
+    // captured by registration order (`capturedHandlers[1]`), even
+    // though the preceding test had been switched to name-based
+    // capture in round 6 #9. If `setupGridEventHandlers` reorders
+    // its addEventListener calls, the wrong handler would be
+    // captured here and the test would fail for a refactor rather
+    // than a behavior regression. Now uses the same name-based
+    // pattern as the preceding test.
     const probe = makeProbe()
-    const capturedHandlers: ((e: unknown, args: unknown) => void)[] = []
+    const capturedByName: Record<string, (e: unknown, args: unknown) => void> = {}
     ;(probe as unknown as {
       addEventListener: (
         target: unknown,
         eventName: string,
         handler: (e: unknown, args: unknown) => void,
       ) => void
-    }).addEventListener = (_t: unknown, _n: string, handler: (e: unknown, args: unknown) => void) => {
-      capturedHandlers.push(handler)
+    }).addEventListener = (
+      _t: unknown,
+      eventName: string,
+      handler: (e: unknown, args: unknown) => void,
+    ) => {
+      capturedByName[eventName] = handler
     }
     ;(probe as unknown as { setupGridEventHandlers(): void }).setupGridEventHandlers()
-    const onActiveCellChangedHandler = capturedHandlers[1]!
+    const onActiveCellChangedHandler = capturedByName['onActiveCellChanged']!
+    expect(typeof onActiveCellChangedHandler).toBe('function')
 
     probe._currentActiveRow = 5
     probe._lastValidationFailed = false
@@ -811,6 +821,74 @@ describe('IdevsGridEditorBase — _lastValidationFailed regression (PR-4b round-
     // Production behavior: flag was false → notify fires + row advances.
     expect(rowChangeCb).toHaveBeenCalledWith(5, 7, { row: 5 }, { row: 7 })
     expect(probe._currentActiveRow).toBe(7)
+  })
+})
+
+describe('IdevsGridEditorBase — handleKeyDown last-cell commit routes through tryCommitEditor (round-9 #1)', () => {
+  // Round-9 #1 (Copilot): the last-editable-cell branch in
+  // handleKeyDown previously called `getEditorLock().commitCurrentEdit()`
+  // directly, ignoring both failure modes:
+  //   - commitCurrentEdit() returning false (validation rejection)
+  //   - commitCurrentEdit() throwing (programmer/runtime error)
+  // The "else" branch already used `tryCommitEditor()` correctly,
+  // making the two paths asymmetric. Fix routes the last-cell path
+  // through `tryCommitEditor()` too AND halts navigation/add-row
+  // on failure.
+  //
+  // Why a structural/source-text test instead of a runtime probe:
+  // `handleKeyDown` is an arrow class-field, not a prototype method,
+  // so `Object.create(IdevsGridEditorBase.prototype)` produces a
+  // probe with `this.handleKeyDown === undefined`. Real construction
+  // would require a Serenity GridEditorBase mount with full
+  // SlickGrid + RemoteView wiring, which is the test harness
+  // explicitly avoided across all PR-4b tests. The runtime contract
+  // for `tryCommitEditor` itself is exhaustively covered in
+  // "tryCommitEditor failure paths" below (PR-4b round-3 #6) —
+  // returns-false, throws, and not-active paths all asserted. This
+  // test confirms the round-9 #1 fix by asserting the structural
+  // anti-regression: the bug pattern (`commitCurrentEdit()` called
+  // directly without going through `tryCommitEditor`) MUST NOT
+  // appear in the last-editable-cell branch of `handleKeyDown`.
+  it('source: last-cell branch routes through tryCommitEditor (no raw commitCurrentEdit call)', async () => {
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const url = await import('node:url')
+    const here = path.dirname(url.fileURLToPath(import.meta.url))
+    const sourceFile = path.join(here, '..', '..', 'src', 'grids', 'idevsGridEditorBase.ts')
+    const src = await fs.readFile(sourceFile, 'utf-8')
+    // Extract the `handleKeyDown` arrow body (from the declaration
+    // through the closing brace of the assigned arrow function).
+    const startIdx = src.indexOf('private handleKeyDown =')
+    expect(startIdx).toBeGreaterThan(-1)
+    // Find the end of this assignment: the next `}\n  }\n` (private
+    // method/property terminator at 2-space indent). For arrow-class-
+    // field assignments, the body ends with `\n  }\n`. Use a
+    // conservative slice to the next top-level private declaration.
+    const remainder = src.slice(startIdx)
+    const nextMemberIdx = remainder.search(/\n {2}(private|protected|public|override)\s/)
+    const handleKeyDownBody = nextMemberIdx > -1 ? remainder.slice(0, nextMemberIdx) : remainder
+    // Anti-regression: the last-editable-cell branch (inside the
+    // `activeCell.cell === lastEditableCellIndex` block) must NOT
+    // call `commitCurrentEdit` directly. All commit paths go
+    // through `tryCommitEditor` so failure/throw routes through the
+    // documented contract.
+    // Search for the bug pattern inside the relevant block.
+    const lastCellIdx = handleKeyDownBody.indexOf(
+      'activeCell.cell === lastEditableCellIndex',
+    )
+    expect(lastCellIdx).toBeGreaterThan(-1)
+    // Slice from there to next `} else {` (end of the last-cell
+    // branch).
+    const restOfBranch = handleKeyDownBody.slice(lastCellIdx)
+    const elseBranchIdx = restOfBranch.indexOf('} else {')
+    const lastCellBranch =
+      elseBranchIdx > -1 ? restOfBranch.slice(0, elseBranchIdx) : restOfBranch
+    // The bug pattern: raw commit without going through tryCommitEditor.
+    expect(lastCellBranch).not.toMatch(
+      /getEditorLock\(\)\.commitCurrentEdit\(\)/,
+    )
+    // The fix: tryCommitEditor IS called in this branch.
+    expect(lastCellBranch).toMatch(/this\.tryCommitEditor\(\)/)
   })
 })
 

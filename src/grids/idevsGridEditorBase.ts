@@ -866,10 +866,17 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
     if (activeCell.cell === lastEditableCellIndex) {
       const currentItem = this.slickGrid.getDataItem(activeCell.row) as TEntity
       if (this.validate(currentItem, activeCell.row)) {
-        if (this.slickGrid.getEditorLock().isActive()) {
-          this.slickGrid.getEditorLock().commitCurrentEdit()
-        }
-        if (isLastRow && this.autoNewRow()) {
+        // Round-9 #1: route through `tryCommitEditor` (NOT the raw
+        // `commitCurrentEdit` from prior code). The raw call ignored
+        // both failure modes — `commitCurrentEdit` returning `false`
+        // (validation rejection) AND throwing (programmer/runtime
+        // error). With the raw path, a rejected cell value could
+        // still trigger an `addButtonClick`/new row OR propagate the
+        // throw upward to the SlickGrid event bus. Now: if commit
+        // fails, halt — no add-row, no nav.
+        if (!this.tryCommitEditor()) {
+          continueMoving = false
+        } else if (isLastRow && this.autoNewRow()) {
           this.addButtonClick()
           continueMoving = false
         }

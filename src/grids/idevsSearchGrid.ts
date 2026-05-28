@@ -379,7 +379,21 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
     const maybeThen = (dialogTypeOrPromise as { then?: unknown } | null)?.then
     if (typeof maybeThen === 'function') {
       ;(dialogTypeOrPromise as PromiseLike<unknown>).then(
-        dialogClass => this.openDialogFor(dialogClass, entityOrId),
+        // Round-9 #2: the fulfillment handler is wrapped in its own
+        // try/catch. If `openDialogFor` throws synchronously (dialog
+        // ctor crash, structural mismatch with `loadByIdAndOpenDialog`),
+        // the throw would otherwise reject the promise returned by
+        // `.then()` — but that returned promise has no rejection
+        // handler, so it becomes an unhandled-rejection event. That
+        // resurrects exactly the failure mode safeHandleEditItemError
+        // was created to prevent.
+        dialogClass => {
+          try {
+            this.openDialogFor(dialogClass, entityOrId)
+          } catch (err) {
+            this.safeHandleEditItemError(err, entityOrId, 'dialog-open')
+          }
+        },
         // .then's second argument (NOT .catch chain) attaches the rejection
         // handler to the same microtask hop, ensuring no transient
         // unhandled-rejection event fires for chunk-load / dynamic-import
