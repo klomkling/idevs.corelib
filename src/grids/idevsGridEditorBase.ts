@@ -480,10 +480,22 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
           activeCell.row !== args.row
         ) {
           const currentItem = this.slickGrid.getDataItem(activeCell.row) as TEntity
-          // Commit current editor if active. The validation result of
-          // the cell-level commit short-circuits row navigation.
+          // Round-10 #1 (Copilot): the prior code called
+          // `tryCommitEditor()` and IGNORED its return value, falling
+          // through to row validation regardless. If the active
+          // editor rejected its value or threw, row validation would
+          // still pass against the previously-committed value AND
+          // SlickGrid would be allowed to move into the new row,
+          // silently dropping the failed cell commit. Fix: when
+          // tryCommitEditor returns false, block the row change
+          // immediately AND set _lastValidationFailed so the
+          // follow-on onActiveCellChanged also suppresses notify +
+          // advance.
           if (this.slickGrid.getEditorLock().isActive()) {
-            this.tryCommitEditor()
+            if (!this.tryCommitEditor()) {
+              this._lastValidationFailed = true
+              return false
+            }
           }
           if (!this.validate(currentItem, activeCell.row)) {
             // Mark the validation failure so the upcoming

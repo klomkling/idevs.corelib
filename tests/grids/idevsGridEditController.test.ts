@@ -1045,6 +1045,81 @@ describe('IdevsGridEditController — non-thenable openDialogFor warn (PR-4b rou
   it.skip('placeholder — see idevsSearchGrid.test.ts', () => {})
 })
 
+describe('IdevsGridEditController — handleKeyDown preventDefault on Tab/Enter (round-10 #2)', () => {
+  // Round-10 #2 (Copilot): once handleKeyDown decides to handle
+  // Tab or Enter, it must stop the browser's default focus
+  // traversal AND any other SlickGrid plugin's Tab handler —
+  // otherwise after our notify() advances the active cell, the
+  // browser's native Tab can move focus OUT of the grid entirely,
+  // leaving the controller's currentRow/currentCell state out of
+  // sync with DOM focus.
+  it('calls preventDefault + stopImmediatePropagation on Tab', () => {
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: [{ field: 'a', visible: true, sourceItem: {} }],
+      items: [{ a: 1 }],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const preventDefault = vi.fn()
+    const stopImmediatePropagation = vi.fn()
+    const evt = {
+      key: 'Tab',
+      shiftKey: false,
+      preventDefault,
+      stopImmediatePropagation,
+    }
+    const keyHandler = slickGrid.onKeyDown.subscribers[0]
+    keyHandler(evt, { row: 0, cell: 0 } as Record<string, unknown>)
+    expect(preventDefault).toHaveBeenCalledTimes(1)
+    expect(stopImmediatePropagation).toHaveBeenCalledTimes(1)
+  })
+
+  it('calls preventDefault + stopImmediatePropagation on Enter', () => {
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: [{ field: 'a', visible: true, sourceItem: {} }],
+      items: [{ a: 1 }],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const preventDefault = vi.fn()
+    const stopImmediatePropagation = vi.fn()
+    const keyHandler = slickGrid.onKeyDown.subscribers[0]
+    keyHandler(
+      { key: 'Enter', shiftKey: false, preventDefault, stopImmediatePropagation },
+      { row: 0, cell: 0 } as Record<string, unknown>,
+    )
+    expect(preventDefault).toHaveBeenCalledTimes(1)
+    expect(stopImmediatePropagation).toHaveBeenCalledTimes(1)
+  })
+
+  it('does NOT call preventDefault for keys other than Tab/Enter', () => {
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: [{ field: 'a', visible: true, sourceItem: {} }],
+      items: [{ a: 1 }],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const preventDefault = vi.fn()
+    const stopImmediatePropagation = vi.fn()
+    const keyHandler = slickGrid.onKeyDown.subscribers[0]
+    keyHandler(
+      { key: 'Escape', shiftKey: false, preventDefault, stopImmediatePropagation },
+      { row: 0, cell: 0 } as Record<string, unknown>,
+    )
+    expect(preventDefault).not.toHaveBeenCalled()
+    expect(stopImmediatePropagation).not.toHaveBeenCalled()
+  })
+})
+
 describe('IdevsGridEditController — handleKeyDown try/catch (PR-4b round-5 #6)', () => {
   // Round 5 #6: SlickGrid's notify() doesn't catch subscriber throws.
   // If `slickGrid.getColumns()` (called inside refreshColumnSnapshot)

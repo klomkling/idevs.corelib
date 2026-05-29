@@ -278,8 +278,17 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
     super.onClick(e, row, cell)
 
     // Highlight the clicked row's slick-row sibling.
-    const target = e.target as HTMLElement | null
-    if (!target) return
+    //
+    // Round-10 #3 (Copilot): `e.target` is `EventTarget | null` per
+    // spec — it can be a Text node, an SVGElement, a window/document
+    // node, etc. Only `Element` instances (and their HTMLElement /
+    // SVGElement subtypes) have `.closest()`. The previous null-
+    // guard alone wasn't enough — clicking on a text-node child
+    // would type-check fine but throw `target.closest is not a
+    // function` at runtime. Narrow via `instanceof Element` instead.
+    const rawTarget = e.target
+    if (!(rawTarget instanceof Element)) return
+    const target = rawTarget
     const viewport = target.closest('.slick-viewport')
     if (viewport) {
       viewport

@@ -892,6 +892,60 @@ describe('IdevsGridEditorBase — handleKeyDown last-cell commit routes through 
   })
 })
 
+describe('IdevsGridEditorBase — onBeforeEditCell honors tryCommitEditor result (round-10 #1)', () => {
+  // Round-10 #1 (Copilot): the onBeforeEditCell handler called
+  // tryCommitEditor() but ignored its return value, falling through
+  // to row validation regardless. A failed cell commit (validation
+  // rejection or throw) would still allow row navigation as long as
+  // row-level validation passed against the previously-committed
+  // value — silently dropping the failed cell commit.
+  //
+  // Fix: when tryCommitEditor returns false, set
+  // _lastValidationFailed and return false immediately.
+  //
+  // Why a source-text structural test (vs. runtime probe):
+  // onBeforeEditCell is registered via this.addEventListener inside
+  // setupGridEventHandlers, and the handler is an INLINE arrow
+  // function. To invoke it via the captured-handler pattern would
+  // require a fully primed probe with `_opts.editable=true` AND a
+  // working `addEventListener` capture AND working stubs for
+  // getActiveCell / getDataItem / getEditorLock / validate. The
+  // chain of indirections doesn't add coverage beyond what the
+  // existing tryCommitEditor failure-paths tests already provide —
+  // the runtime contract of tryCommitEditor IS exhaustively
+  // tested. This test asserts the structural anti-regression: the
+  // bug pattern (`this.tryCommitEditor()` called without inspecting
+  // the return value) MUST NOT appear in the onBeforeEditCell
+  // handler.
+  it('source: onBeforeEditCell handler returns false when tryCommitEditor returns false', async () => {
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const url = await import('node:url')
+    const here = path.dirname(url.fileURLToPath(import.meta.url))
+    const sourceFile = path.join(here, '..', '..', 'src', 'grids', 'idevsGridEditorBase.ts')
+    const src = await fs.readFile(sourceFile, 'utf-8')
+    // Find the onBeforeEditCell handler registration.
+    const onBeforeIdx = src.indexOf("'onBeforeEditCell'")
+    expect(onBeforeIdx).toBeGreaterThan(-1)
+    // Slice forward to the next addEventListener call (end of this
+    // handler).
+    const after = src.slice(onBeforeIdx)
+    const nextHandlerIdx = after.indexOf('this.addEventListener(', 100)
+    const handlerBody = nextHandlerIdx > -1 ? after.slice(0, nextHandlerIdx) : after
+    // Anti-regression: the commit-current-edit branch must inspect
+    // the tryCommitEditor return value AND return false on failure.
+    // Look for `if (!this.tryCommitEditor())` pattern.
+    expect(handlerBody).toMatch(/if\s*\(\s*!this\.tryCommitEditor\(\)\s*\)/)
+    // The fix also sets _lastValidationFailed so the follow-on
+    // onActiveCellChanged handler also suppresses the row advance.
+    // Find the matching block and confirm it sets the flag.
+    const tryCommitIdx = handlerBody.search(/if\s*\(\s*!this\.tryCommitEditor\(\)\s*\)/)
+    const blockAfter = handlerBody.slice(tryCommitIdx, tryCommitIdx + 200)
+    expect(blockAfter).toMatch(/this\._lastValidationFailed\s*=\s*true/)
+    expect(blockAfter).toMatch(/return false/)
+  })
+})
+
 describe('IdevsGridEditorBase — tryCommitEditor failure paths (PR-4b round-3 #6)', () => {
   type TryCommitProbe = GridEditorProbe & { tryCommitEditor(): boolean }
   it('returns true when editor lock is not active', () => {

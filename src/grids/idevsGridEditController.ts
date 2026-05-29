@@ -366,6 +366,16 @@ export class IdevsGridEditController<
       this.enterKey = false
       return
     }
+    // Round-10 #2 (Copilot): once we've decided to handle Tab/Enter,
+    // we must stop the browser's default focus traversal (and any
+    // other SlickGrid plugin's Tab handler) — otherwise after our
+    // notify() advances the active cell, the browser's native Tab
+    // can move focus OUT of the grid entirely, leaving the
+    // controller's `currentRow`/`currentCell` state out of sync with
+    // DOM focus. Matches `IdevsGridEditorBase.handleKeyDown` which
+    // already calls these.
+    e.preventDefault()
+    e.stopImmediatePropagation()
     // Body wrapped in try/catch — `refreshColumnSnapshot()` and
     // `nextCell` / `previousCell` invoke `slickGrid.getColumns()` /
     // `getHeader()`, both of which can throw on corrupted SlickGrid

@@ -361,6 +361,53 @@ describe('IdevsSearchGrid — onClick + authorization gating', () => {
       else delete entityGridProto.onClick
     }
   })
+
+  it('onClick is defensive when e.target is a Text node (round-10 #3)', () => {
+    // Round-10 #3 (Copilot): `e.target` is `EventTarget | null` per
+    // spec — it can be a Text node, document, window, SVGElement,
+    // etc. Only `Element` subclasses have `.closest()`. The prior
+    // null-guard alone wasn't enough — a Text-node target would
+    // type-check at compile time but throw at runtime. Fix: narrow
+    // via `instanceof Element` so Text-node targets are silently
+    // dropped instead of crashing.
+    const probe = makeProbe()
+    const textNode = document.createTextNode('clicked-text')
+    const evt = new MouseEvent('click')
+    Object.defineProperty(evt, 'target', { value: textNode })
+
+    const entityGridProto = Object.getPrototypeOf(IdevsSearchGrid.prototype) as {
+      onClick?: () => void
+    }
+    const originalSuper = entityGridProto.onClick
+    entityGridProto.onClick = vi.fn()
+    try {
+      // Must NOT throw `target.closest is not a function`.
+      expect(() => probe.onClick(evt, 0, 0)).not.toThrow()
+    } finally {
+      if (originalSuper) entityGridProto.onClick = originalSuper
+      else delete entityGridProto.onClick
+    }
+  })
+
+  it('onClick is defensive when e.target is the document (round-10 #3)', () => {
+    // Defensive corollary: document IS an EventTarget that lacks
+    // `.closest`. Some click-through-overlay scenarios produce this.
+    const probe = makeProbe()
+    const evt = new MouseEvent('click')
+    Object.defineProperty(evt, 'target', { value: document })
+
+    const entityGridProto = Object.getPrototypeOf(IdevsSearchGrid.prototype) as {
+      onClick?: () => void
+    }
+    const originalSuper = entityGridProto.onClick
+    entityGridProto.onClick = vi.fn()
+    try {
+      expect(() => probe.onClick(evt, 0, 0)).not.toThrow()
+    } finally {
+      if (originalSuper) entityGridProto.onClick = originalSuper
+      else delete entityGridProto.onClick
+    }
+  })
 })
 
 describe('IdevsSearchGrid — setSearchValue toolbar=undefined regression (PR-4b round-3 #20)', () => {
