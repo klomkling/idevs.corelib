@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+> Tracks work landed on `main` after `v1.1.1` that has not yet been tagged. The unreleased grid-extensions work (batches 2–4b) is described in `MIGRATION.md` under `1.4.x → 1.5.0`; the entry below covers only the most recent hardening round on top of that work.
+
+### PR-4b grid extensions — round-19 hardening (12 findings)
+
+Multi-agent review (`pr-review-toolkit`) of the merged batch-4b grid extensions identified 3 Critical, 6 Important, and 3 Suggestion-level findings. All 12 addressed in commit `ed55acc`. Public-facing changes consumers should know about:
+
+#### Changed
+
+- **`IdevsGridEditorBase.deleteCurrentRow` no longer rethrows on repaint failure.** If `slickGrid.invalidate()` / `updateRowCount()` / `render()` throws after `view.deleteItem` already succeeded, the row stays in `_deletedRows` (data-layer delete already happened), the method logs + calls `notifyError('The row was deleted but the grid display could not be refreshed. …')`, and returns cleanly. Subclasses that previously wrapped the call in `try/catch` can drop that.
+- **Click handler now commits the active editor on same-row cell-to-cell clicks too** (round-18 #1 follow-up). Previously round-17 only gated the commit by `row !== args.row` — editing row 0 cell 1 and clicking row 0 cell 2 still hit the data-loss path. Widened to `row OR cell change`; row-level `validate()` stays row-only.
+- **`addButtonClick` commit → validate → addItem ordering** is now covered by behavioral tests (round-19 #7), preventing future re-introduction of the round-17 #2 stale-row validation bug.
+
+#### Added
+
+- **`IdevsGridEditController.findColumnByDataId` warn-on-miss telemetry.** When a header's `data-id` matches no column's `id` OR `field`, the controller now logs `[IdevsGridEditController] findColumnByDataId: header data-id matches no visible column id or field: <dataId>`. Navigation behavior unchanged (returns `-1`, caller continues iterating). Helps diagnose column-config drift that previously silently turned cells into non-editable.
+- **`IdevsGridEditController.notifyCellChange` try/catch around the host notify.** A throwing `onCellChange` subscriber on the host grid no longer rips up through the editor's `change` handler. Logged as `[IdevsGridEditController] onCellChange subscriber threw; editor state already committed:` — editor state stays consistent because textContent / cleanup writes already ran before notify.
+- **`isDefinedCellTarget` internal type guard** in `idevsGridEditorBase.ts` replaces a fragile `args!` non-null assertion in the click handler with a compiler-enforced narrowed `clickTarget` local.
+
+#### Fixed
+
+- **`IdevsGridEditController` editor classes** — Integer / Decimal / String editor change handlers now have inline cross-reference comments pointing at the shared `cleanupCellEditorClasses` helper to prevent future drift (the Lookup `text-white` leak fixed in round-11 #3 originated from this kind of drift).
+- **`tryCommitEditor` failure path documentation** clarified: on `commitCurrentEdit() === false` the SlickGrid contract is that the editor's own `validate()` rendered the user-visible message; the controller intentionally does not add a second `notifyError` toast. Telemetry-only `console.warn` retained.
+
+#### Tests
+
+- **+9 net new tests**, total now 556 + 1 skipped (was 547 + 1 skipped at end of round-18).
+- Replaced brittle "no `||` between if and validate" structural style-pin test with **5 behavioral runtime tests** exercising the captured click handler through `setupGridEventHandlers` (different-row click, same-row different-cell click, same-cell no-op, failing-commit blocks navigation, no-flag-on-block).
+- Added bidirectional `findColumnByDataId` collision tests (id-first regardless of column order) + warn-on-miss + no-warn-on-match.
+- Added strict-TS compile-only assertions for the `id?: string` field on `GridColumn` introduced in round-17 #4.
+- Added 2 behavioral ordering tests for `addButtonClick`: commit → validate → addItem on success; commit → validate (no addItem) on validate-fail.
+
+#### Migration
+
+- See `MIGRATION.md` under `### Post-review hardening (PR-4b rounds 6-19)` for the full consumer-facing contract list, including the marker-based editor identification contract for custom `registerCellEditor(...)` renderers.
+
+---
+
 ## [1.1.1] - 2026-05-24
 
 ### Added
