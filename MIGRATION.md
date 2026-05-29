@@ -68,6 +68,31 @@ New overridable hooks on `IdevsGridEditorBase`:
 - **Lifecycle**: `IdevsGridEditController` adds a public `destroy()` method (source never unsubscribed its 5 SlickGrid event handlers — long-lived host grids accumulated dead subscriptions). `IdevsGridEditorBase` extends the source's `destroy()` to clear subscriber arrays in addition to draining `eventCleanup`.
 - **Null guards**: `IdevsSearchGrid.setSearchValue` defensively checks `toolbar?.element?.findFirst`. `IdevsSearchGrid.onClick` null-guards `.closest('.slick-viewport')` and uses `target.closest('.slick-row')` to walk to the real row element (the source's `target.parentElement` was the cell, not the row, when cells contain nested formatter markup). `IdevsGridEditorBase.toggleGridExpansion` and `calculateAvailableHeight` null-guard `.closest()` calls so the grid can render outside the expected `form > .category > <grid>` chain.
 
+### Post-review hardening (PR-4b rounds 6-19)
+
+The initial port (rounds 1-5) shipped the surface above. The follow-on review rounds (6-19, ~95 findings across Codex / multi-agent / GitHub Copilot reviews) tightened contracts in ways that affect downstream consumers writing custom renderers, subclasses, or relying on specific lifecycle ordering. The list below is curated to what consumers need to know — internal-only fixes are omitted.
+
+**`IdevsGridEditController` — public contract changes:**
+
+- **Editor identification is marker-based**, not regex-on-className. Custom renderers registered via `registerCellEditor(editorType, render)` MUST mount their editor child through the `appendEditorChild(child)` callback in the render params (NOT raw `target.appendChild(...)`). The callback tags the child with a controller-owned attribute so subsequent clicks can distinguish your editor from formatter markup. Direct `appendChild` works the first time but the next click is treated as a toggle-off. See the `IdevsCellEditorRender` JSDoc.
+- **Toggle-off is controller-managed.** Renderers are invoked ONLY for fresh mounts — the controller removes any existing marked editor BEFORE dispatch and bails without calling the renderer. Custom renderers don't need to call any "remove existing editor" helper themselves.
+- **Header `data-id` matches `column.id`, then `column.field` as fallback.** Round-17 #4: SlickGrid stores `column.id` in headers' `data-id`. Round 19 #5: when no column matches, the controller logs `[IdevsGridEditController] findColumnByDataId: header data-id matches no visible column id or field: <dataId>` (warn-level telemetry only — navigation behavior is unchanged: it still returns -1 and the caller continues iterating).
+- **`GridColumn` shape now includes `id?: string`** (re-exported from `_columnShape.ts` for renderer authors via the `GridColumnWithField` re-export). Existing column descriptors without an explicit `id` continue to work — the field-match fallback handles them.
+- **`notifyCellChange` is now catch-and-log.** A throwing `onCellChange` subscriber on the host grid no longer rips up through the editor's `change` handler — it's logged as `[IdevsGridEditController] onCellChange subscriber threw; editor state already committed:` and the editor stays consistent. (The textContent / cleanup writes already ran before notify; data is committed, host observers can fail without corrupting UI.)
+
+**`IdevsGridEditorBase` — public contract changes:**
+
+- **`deleteCurrentRow` no longer rethrows on repaint failure.** Round 19 #1: if `slickGrid.invalidate()` / `updateRowCount()` / `render()` throws AFTER `view.deleteItem` succeeded, the row is still added to `_deletedRows` (data-layer delete already happened), the method returns cleanly, and the user sees `notifyError('The row was deleted but the grid display could not be refreshed. ...')`. Subclasses that previously caught the throw at the call site can drop that try/catch.
+- **Click handler commits before any navigation (round-17/18 + round-19 #6).** When the user clicks a different cell — same row OR different row — the active editor is committed via `tryCommitEditor()` BEFORE `startEditing` tears it down. A failed commit (returns false or throws) blocks the click via `preventDefault` + `stopImmediatePropagation`. Row-level `validate()` only runs for actual row changes. Consumers extending the click handler should preserve this ordering.
+- **`tryCommitEditor` failure paths:**
+  - **commit throws** → editor's `cancelCurrentEdit()` runs + `notifyError('Unable to save the cell value. Please try again.')` + return false.
+  - **commit returns false** (cell-level validation rejection) → no notify (SlickGrid contract is that the editor's own `validate()` rendered the user-visible message) + warn-level telemetry only + return false.
+- **`addButtonClick` ordering** (round-17 #2 + round-19 #7): commit → row-validate against post-commit state → addItem. Subclasses overriding `addButtonClick` should preserve this order or they re-introduce the round-17 #2 data-loss path (validate against stale row, commit destroyed by setActiveCell).
+
+**`IdevsSearchGrid`:**
+
+- **`handleEditItemError(err, entityOrId, phase?)`** is now invoked through a `safeHandleEditItemError` wrapper that catches override-throws. Subclasses overriding the hook don't need their own try/catch — a throwing override is downgraded to a logged warning instead of becoming an unhandled rejection.
+
 ### NOT ported (stay in PowerACC)
 
 - `ShippingMark*` modules — PowerACC domain code.

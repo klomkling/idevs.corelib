@@ -1172,6 +1172,93 @@ describe('IdevsGridEditController — header data-id matches column.id, not colu
     // id match.
     expect(findByDataId.call(controller, 'misc')).toBe(0)
   })
+
+  it('findColumnByDataId helper prefers id over field — reverse layout (round-19 #8)', () => {
+    // Round-19 #8 (pr-test-analyzer 6/10): the existing collision
+    // test above only covers ONE direction of the collision (the
+    // first column has `id` matching, the second has `field`
+    // matching). Swap the column order to ensure the helper picks
+    // the id-match REGARDLESS of array order — confirming the
+    // first-pass / second-pass loop ordering isn't accidentally
+    // dependent on column position.
+    const { grid } = makeFakeGrid({
+      editable: true,
+      columns: [
+        // This column's `field` matches the SECOND column's `id`.
+        { field: 'misc', visible: true, sourceItem: {} },
+        { id: 'misc', field: 'specific', visible: true, sourceItem: {} },
+      ],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const findByDataId = (controller as unknown as {
+      findColumnByDataId(s: string): number
+    }).findColumnByDataId
+    // `data-id='misc'` should match the SECOND column (id='misc'),
+    // not the first (field='misc'). The helper's first pass scans
+    // ALL columns for an id match before falling back to field
+    // matches — independent of array order.
+    expect(findByDataId.call(controller, 'misc')).toBe(1)
+  })
+
+  it('findColumnByDataId helper warns on no match (round-19 #5 silent-failure-hunter)', () => {
+    // Round-19 #5 (silent-failure-hunter 80%): a header `data-id`
+    // that matches NEITHER any column's id NOR any column's field
+    // is almost always a column-config drift. The helper now warns
+    // for traceability (the navigation behavior is unchanged — it
+    // still returns -1 and the caller continues iterating).
+    const { grid } = makeFakeGrid({
+      editable: true,
+      columns: [
+        { id: 'real-col', field: 'realField', visible: true, sourceItem: {} },
+      ],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const findByDataId = (controller as unknown as {
+      findColumnByDataId(s: string): number
+    }).findColumnByDataId
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const result = findByDataId.call(controller, 'ghost-column')
+      // Behavior contract preserved — -1 sentinel for no-match.
+      expect(result).toBe(-1)
+      // Telemetry contract — warn with the offending dataId for
+      // dev-console grepping.
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('header data-id matches no visible column'),
+        'ghost-column',
+      )
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it('findColumnByDataId helper does NOT warn on successful id match (round-19 #5)', () => {
+    // Make sure the new telemetry log only fires on the no-match
+    // path — a successful lookup must stay silent.
+    const { grid } = makeFakeGrid({
+      editable: true,
+      columns: [
+        { id: 'real-col', field: 'realField', visible: true, sourceItem: {} },
+      ],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const findByDataId = (controller as unknown as {
+      findColumnByDataId(s: string): number
+    }).findColumnByDataId
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(findByDataId.call(controller, 'real-col')).toBe(0)
+      expect(warnSpy).not.toHaveBeenCalled()
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
 })
 
 describe('IdevsGridEditController — header data-id null-collision (PR-4b round-4 #3 + round-5 #3)', () => {

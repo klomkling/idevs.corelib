@@ -538,6 +538,22 @@ export class IdevsGridEditController<
     // Fallback: field match (back-compat for columns without an
     // explicit `id`).
     idx = this.visibleColumns.findIndex(column => column.field === dataId)
+    if (idx < 0) {
+      // Round-19 #5 (silent-failure-hunter): a header with a `data-id`
+      // that matches NO visible column's id OR field is almost always
+      // a column-config bug — a column was removed/renamed without the
+      // header being rebuilt, OR a custom header injected `data-id`
+      // values the controller doesn't own. Without this telemetry the
+      // navigation just silently skips the header (it becomes
+      // non-editable), and the user-visible symptom is "Tab/Enter
+      // doesn't visit cell X" with no console clue. The caller
+      // `nextCell` / `previousCell` still gets `-1` and continues
+      // iterating — behavior unchanged — but devs now have a trail.
+      console.warn(
+        '[IdevsGridEditController] findColumnByDataId: header data-id matches no visible column id or field:',
+        dataId,
+      )
+    }
     return idx
   }
 
@@ -605,12 +621,32 @@ export class IdevsGridEditController<
     // (top-level 1.9.8) and the nested copy bundled with corelib (1.9.6)
     // declare separate private fields on `Grid<any>`, making a direct
     // assignment between the two ArgsCell shapes non-comparable.
-    ;(this.grid.slickGrid.onCellChange as unknown as SlickEventEmitter).notify({
-      grid: this.grid.slickGrid,
-      row: args.row,
-      cell: args.cell,
-      item,
-    } as unknown as ArgsCell)
+    //
+    // Round-19 #10 (silent-failure-hunter): wrap the host notify in
+    // try/catch. SlickGrid's `notify()` synchronously fans out to
+    // every `onCellChange` subscriber — any one of which can throw
+    // (host code observing cell changes for downstream computation,
+    // form-dirty trackers, etc.). Without this guard the throw
+    // propagates UP through the editor's `change` handler — which
+    // happens AFTER `target.textContent = ...` and
+    // `cleanupCellEditorClasses()`. The cell is already in its
+    // post-commit visual state, so the throw doesn't corrupt UI;
+    // but it DOES rip out of the editor event-handler with no
+    // telemetry pointing at the host subscriber. Catch + log so the
+    // origin is traceable while the editor stays consistent.
+    try {
+      ;(this.grid.slickGrid.onCellChange as unknown as SlickEventEmitter).notify({
+        grid: this.grid.slickGrid,
+        row: args.row,
+        cell: args.cell,
+        item,
+      } as unknown as ArgsCell)
+    } catch (notifyErr) {
+      console.warn(
+        '[IdevsGridEditController] onCellChange subscriber threw; editor state already committed:',
+        notifyErr,
+      )
+    }
   }
 
   /**
@@ -851,6 +887,13 @@ export class IdevsGridEditController<
       item[column.field] = Number.isFinite(parsed) ? parsed : 0
       // XSS hardening: textContent (source used innerHTML).
       target.textContent = stringValue
+      // Round-19 #11 (comment-analyzer): shared cleanup helper
+      // (defined ~line 825) is called by EVERY editor's change
+      // handler AND by `removeExistingEditor` / row-change cleanup.
+      // Keeps the toggle-off / row-change / commit paths symmetric
+      // so a Lookup cell's `text-white` class can't leak past a
+      // commit (round-11 #3) and an Integer cell's `with-editor`
+      // can't leak past a row change (round-7 #5).
       this.cleanupCellEditorClasses(target)
       notifyCellChange()
     })
@@ -881,6 +924,7 @@ export class IdevsGridEditController<
       // XSS hardening: textContent (source used innerHTML, fine for
       // numeric output but consistent with the rest of the editors).
       target.textContent = formattedValue
+      // Shared cleanup — see renderIntegerEditor for the contract.
       this.cleanupCellEditorClasses(target)
       notifyCellChange()
     })
@@ -1023,6 +1067,7 @@ export class IdevsGridEditController<
       // are user-typed text, so embedded `<script>` or event-handler
       // attributes would execute on display.
       target.textContent = value
+      // Shared cleanup — see renderIntegerEditor for the contract.
       this.cleanupCellEditorClasses(target)
       notifyCellChange()
     })

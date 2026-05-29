@@ -542,15 +542,24 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
         e?.preventDefault?.()
         return false
       }
+      // Round-19 #6 (type-design-analyzer): capture args.row / args.cell
+      // as a single narrowed `clickTarget` reference instead of relying
+      // on `args!.row` / `args!.cell` non-null assertions further down.
+      // The non-null assertion was correct at runtime (the
+      // `isDifferentCell` predicate had already verified both are
+      // defined), but it didn't give the compiler anything to enforce
+      // — a future change to the predicate could silently leave the
+      // assertion stale. With the explicit narrowed local, TypeScript
+      // refuses any future re-use of the unguarded `args` here.
+      const clickTarget = isDefinedCellTarget(args) ? { row: args.row, cell: args.cell } : null
       const activeCell = this.slickGrid.getActiveCell()
+      const hasDefinedActive =
+        !!activeCell && activeCell.row !== undefined && activeCell.cell !== undefined
       const isDifferentCell =
-        !!activeCell &&
-        activeCell.row !== undefined &&
-        activeCell.cell !== undefined &&
-        args?.row !== undefined &&
-        args?.cell !== undefined &&
-        (activeCell.row !== args.row || activeCell.cell !== args.cell)
-      if (isDifferentCell && activeCell) {
+        hasDefinedActive &&
+        !!clickTarget &&
+        (activeCell.row !== clickTarget.row || activeCell.cell !== clickTarget.cell)
+      if (isDifferentCell && activeCell && clickTarget) {
         // Round-17 #1 [P1] (Copilot) + round-18 #1 [P1] (Copilot):
         // commit the active editor BEFORE moving to another cell.
         // `startEditing` below calls `setActiveCell`, which tears
@@ -577,7 +586,7 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
           e?.preventDefault?.()
           return false
         }
-        if (activeCell.row !== args!.row) {
+        if (activeCell.row !== clickTarget.row) {
           const currentItem = this.slickGrid.getDataItem(activeCell.row) as TEntity
           if (!this.validate(currentItem, activeCell.row)) {
             // Same round-17 #3 reasoning.
@@ -700,9 +709,33 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
       throw err
     }
     this._deletedRows.push(item)
-    this.slickGrid.invalidate()
-    this.slickGrid.updateRowCount()
-    this.slickGrid.render()
+    // Round-19 #1 (silent-failure-hunter): wrap the repaint trio in
+    // try/catch + surface via notifyError. The data-layer delete has
+    // ALREADY succeeded above; if `invalidate()` / `updateRowCount()` /
+    // `render()` throws (corrupt SlickGrid state, host plugin throwing
+    // from a repaint observer, jsdom-only DOM API gaps), the row is
+    // gone from `view` but the grid still paints the stale row count
+    // and the user sees the deleted row "come back" visually until
+    // the next render. The throw would also propagate up to whoever
+    // invoked the delete button click, with no telemetry pointing at
+    // the repaint as the culprit. Catch + log + notify so the user
+    // knows the delete partially succeeded and the dev sees the
+    // origin; do NOT re-throw because the delete itself was
+    // successful at the data layer.
+    try {
+      this.slickGrid.invalidate()
+      this.slickGrid.updateRowCount()
+      this.slickGrid.render()
+    } catch (repaintErr) {
+      console.warn(
+        '[IdevsGridEditorBase] deleteCurrentRow: repaint after deleteItem threw; data deleted but grid may be stale:',
+        repaintErr,
+      )
+      notifyError(
+        'The row was deleted but the grid display could not be refreshed. Please reload to see the current state.',
+      )
+      return
+    }
 
     if (this.view.getLength() > 0) {
       const newRow = Math.max(0, row - 1)
@@ -1091,8 +1124,23 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
       return false
     }
     if (!committed) {
-      // Cell-level validation rejection. The editor itself displays the
-      // error; this log is telemetry-only, not user-facing.
+      // Cell-level validation rejection. SlickGrid contract is that the
+      // editor's own `validate()` rendered the error message — so a
+      // second `notifyError` here would be noise on top of the editor's
+      // existing UI. We log for telemetry only.
+      //
+      // Round-19 #4 (silent-failure-hunter): the navigation BLOCK that
+      // follows (caller bails on `false`) is what the user perceives —
+      // their click does "nothing." That's intentional and matches
+      // every other editable-grid library's UX: the editor stays
+      // active so the user can fix their input. The editor's own
+      // validation feedback is the user-visible signal; the click
+      // itself doesn't need a second toast.
+      //
+      // If a consumer's editor `validate()` returns invalid WITHOUT
+      // rendering any user-visible feedback, they have an editor bug
+      // — not a controller bug — and our telemetry log surfaces the
+      // missing feedback for them in dev consoles.
       console.warn('[IdevsGridEditorBase] commitCurrentEdit returned false (validation)')
       return false
     }
@@ -1165,3 +1213,20 @@ type AddListenerEvent = {
 
 /** Local alias for the shared GridColumn[] shape. See _columnShape.ts. */
 type GridColumnArr = GridColumn[]
+
+/**
+ * Type predicate for "ArgsCell with both row AND cell defined as
+ * numbers." SlickGrid's `ArgsCell` types both as `number | undefined`
+ * because some emitters (e.g. row-mode events) pass row-only args.
+ * The click handler needs both; this predicate narrows in one place
+ * so the call site doesn't need bare `args!.row` non-null assertions.
+ *
+ * Round-19 #6 (type-design-analyzer): centralize the "both fields
+ * defined" check so future changes to the click handler can't drift
+ * into stale assertions.
+ */
+function isDefinedCellTarget(
+  args: ArgsCell | undefined,
+): args is ArgsCell & { row: number; cell: number } {
+  return !!args && args.row !== undefined && args.cell !== undefined
+}

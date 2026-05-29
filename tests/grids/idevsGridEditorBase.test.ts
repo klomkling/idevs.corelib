@@ -1163,55 +1163,239 @@ describe('IdevsGridEditorBase — click handler commits active editor BEFORE sta
     // The gating condition before tryCommitEditor MUST cover
     // same-row cell changes too — not just `row !== args.row`.
     // The bug pattern was a sole `activeCell.row !== args.row`
-    // check. The fix must include either `activeCell.cell !== args.cell`
-    // OR a compound condition that covers both.
+    // check. The fix must include `activeCell.cell !== <target>.cell`
+    // somewhere in the gate. After round-19 #6, the gate compares
+    // against a narrowed `clickTarget` local rather than `args`
+    // directly, so the pattern accepts either form.
     //
     // Assert: cell-difference is part of the guard.
-    expect(clickHandlerBody).toMatch(/activeCell\.cell\s*!==\s*args[?]?\.cell/)
+    expect(clickHandlerBody).toMatch(
+      /activeCell\.cell\s*!==\s*(args[?]?|clickTarget)\.cell/,
+    )
     // And: the commit call IS present in this handler.
     expect(clickHandlerBody).toMatch(/this\.tryCommitEditor\(\)/)
   })
 
-  it('source: validate(currentItem) still runs ONLY on actual row changes (round-18 #1 preservation)', async () => {
-    // Round-17 #1's contract was: row-level validate runs only for
-    // row changes. Round-18 #1 widens the OUTER commit-gate to
-    // cover same-row cell moves, but the INNER validate must stay
-    // row-only — otherwise same-row navigation would trigger
-    // row-validation needlessly.
-    //
-    // The fix's structure: the `validate(currentItem, ...)` call
-    // is inside an `if (activeCell.row !== args.row)` branch within
-    // the wider commit-gate block.
-    const fs = await import('node:fs/promises')
-    const path = await import('node:path')
-    const url = await import('node:url')
-    const here = path.dirname(url.fileURLToPath(import.meta.url))
-    const sourceFile = path.join(here, '..', '..', 'src', 'grids', 'idevsGridEditorBase.ts')
-    const src = await fs.readFile(sourceFile, 'utf-8')
+  // Round-19 #2 (pr-test-analyzer 9/10) + #3 (pr-test-analyzer 8/10):
+  // The previous round's brittle "no `||` between the inner `if` and
+  // the inner validate" structural test was style-pinning — it
+  // rejected any future `||` in the file (including in unrelated code
+  // / comments) instead of asserting the actual behavior. Replaced
+  // with behavioral runtime assertions that drive the captured click
+  // handler through the same paths the bug touches.
+  //
+  // The click handler is registered inside `setupGridEventHandlers`
+  // via `this.addEventListener(emitter, 'onClick', handler)`. Since
+  // the probe's mock emitter is a `vi.fn()`, we can pull the captured
+  // handler back out of `subscribe.mock.calls` and invoke it directly
+  // with synthesized SlickGrid `(e, args)` arguments. Sequence of
+  // mock calls answers the question "did commit run before
+  // startEditing?" without relying on source-text patterns.
+  describe('IdevsGridEditorBase — click handler runtime contract (round-19 #2/#3)', () => {
+    type ClickHandler = (
+      e: { stopImmediatePropagation?: () => void; preventDefault?: () => void } | undefined,
+      args: { row?: number; cell?: number } | undefined,
+    ) => unknown
 
-    const clickEventNameIdx = src.indexOf('const clickEventName')
-    const afterClick = src.slice(clickEventNameIdx)
-    const nextHandlerIdx = afterClick.indexOf('// Tab / Enter navigation')
-    const clickHandlerBody =
-      nextHandlerIdx > -1 ? afterClick.slice(0, nextHandlerIdx) : afterClick
+    function setupClickHandlerProbe(opts: {
+      activeCell: { row: number; cell: number } | null
+      lockActive: boolean
+      commitReturns: boolean
+    }) {
+      const probe = makeProbe({
+        items: [{ a: 1 }, { b: 2 }],
+        columns: [{ field: 'a' }, { field: 'b' }],
+      })
+      // Sequence trace of the mock calls we care about (interleaved).
+      const sequence: string[] = []
+      probe.slickGrid.getActiveCell = vi.fn(() => opts.activeCell)
+      probe.slickGrid.getEditorLock = vi.fn(() => ({
+        isActive: () => opts.lockActive,
+        commitCurrentEdit: vi.fn(() => {
+          sequence.push('commitCurrentEdit')
+          return opts.commitReturns
+        }),
+        cancelCurrentEdit: vi.fn(),
+      }))
+      probe.slickGrid.setActiveCell = vi.fn(() => {
+        sequence.push('setActiveCell')
+      })
+      probe.slickGrid.editActiveCell = vi.fn(() => {
+        sequence.push('editActiveCell')
+      })
+      probe.slickGrid.getCellEditor = vi.fn(() => null) as unknown as ReturnType<typeof vi.fn>
+      // Spy on validate via the prototype so the source's inline
+      // call (not on probe) still hits us. validate -> notifyError;
+      // we make it deterministic.
+      const proto = Object.getPrototypeOf(probe) as { validate?: (...a: unknown[]) => boolean }
+      const originalValidate = proto.validate
+      proto.validate = (..._a: unknown[]) => {
+        sequence.push('validate')
+        return true
+      }
 
-    // Locate the validate call.
-    const validateIdx = clickHandlerBody.search(/this\.validate\(currentItem,/)
-    expect(validateIdx).toBeGreaterThan(-1)
-    // Search backward for the nearest `if (activeCell.row !== args` —
-    // must be a row-only gate, NOT the outer compound gate that
-    // covers cell changes too.
-    const beforeValidate = clickHandlerBody.slice(0, validateIdx)
-    const lastIfIdx = Math.max(
-      beforeValidate.lastIndexOf('if (activeCell.row !== args'),
-      beforeValidate.lastIndexOf("if (activeCell.row !== args!"),
-    )
-    expect(lastIfIdx).toBeGreaterThan(-1)
-    // Between that if and the validate call, there should be NO
-    // `||` (i.e., the gate is a plain row-difference check, not a
-    // compound row-or-cell check).
-    const between = beforeValidate.slice(lastIfIdx)
-    expect(between.includes('||')).toBe(false)
+      // Wire up _opts so setupGridEventHandlers takes the autoEdit
+      // (onClick) branch.
+      ;(probe as unknown as { _opts: { editable: boolean; autoEdit: boolean } })._opts = {
+        editable: true,
+        autoEdit: true,
+      }
+
+      // Invoke setupGridEventHandlers via prototype. The Tab/Enter
+      // and onBeforeEditCell + onActiveCellChanged subscribers are
+      // also captured here but we'll only invoke the click handler.
+      const setup = (
+        Object.getPrototypeOf(probe) as { setupGridEventHandlers: () => void }
+      ).setupGridEventHandlers
+      setup.call(probe)
+
+      const onClickSubscribe = probe.slickGrid.onClick.subscribe as ReturnType<typeof vi.fn>
+      // The click handler is the FIRST (and only) subscriber on
+      // onClick — _opts.autoEdit=true routes the click subscription
+      // to onClick, not onDblClick.
+      expect(onClickSubscribe.mock.calls.length).toBe(1)
+      const clickHandler = onClickSubscribe.mock.calls[0]?.[0] as ClickHandler
+      expect(typeof clickHandler).toBe('function')
+
+      const restore = () => {
+        if (originalValidate) proto.validate = originalValidate
+        else delete proto.validate
+      }
+      return { probe, clickHandler, sequence, restore }
+    }
+
+    it('different-ROW click: commit runs BEFORE validate runs BEFORE startEditing', () => {
+      const { clickHandler, sequence, restore } = setupClickHandlerProbe({
+        activeCell: { row: 0, cell: 1 },
+        lockActive: true,
+        commitReturns: true,
+      })
+      try {
+        const result = clickHandler(undefined, { row: 1, cell: 0 })
+        expect(result).not.toBe(false)
+        // tryCommitEditor → commitCurrentEdit, then validate, then
+        // startEditing (which calls setActiveCell + editActiveCell).
+        expect(sequence).toEqual([
+          'commitCurrentEdit',
+          'validate',
+          'setActiveCell',
+          'editActiveCell',
+        ])
+      } finally {
+        restore()
+      }
+    })
+
+    it('same-ROW different-CELL click (round-18 #1 [P1]): commit runs but validate does NOT, then startEditing', () => {
+      // This is THE round-18 #1 data-loss scenario at runtime: edit
+      // row 0 cell 0, click row 0 cell 1. The commit MUST run; the
+      // row-validate must NOT (still editing the same row); then
+      // startEditing fires for the new cell.
+      const { clickHandler, sequence, restore } = setupClickHandlerProbe({
+        activeCell: { row: 0, cell: 0 },
+        lockActive: true,
+        commitReturns: true,
+      })
+      try {
+        const result = clickHandler(undefined, { row: 0, cell: 1 })
+        expect(result).not.toBe(false)
+        // commitCurrentEdit runs (the round-18 widening) but
+        // validate is skipped (round-17 #1's row-only contract).
+        expect(sequence).toContain('commitCurrentEdit')
+        expect(sequence).not.toContain('validate')
+        expect(sequence).toContain('setActiveCell')
+        // Ordering: commit MUST precede setActiveCell. Without
+        // that ordering the editor would be torn down before the
+        // commit ran (round-17 #1 / round-18 #1 data-loss path).
+        expect(sequence.indexOf('commitCurrentEdit')).toBeLessThan(
+          sequence.indexOf('setActiveCell'),
+        )
+      } finally {
+        restore()
+      }
+    })
+
+    it('same-CELL click (no-op navigation): commit does NOT run, validate does NOT run, no startEditing', () => {
+      // Clicking the same cell the user is already editing is a
+      // null-navigation — the gate's `isDifferentCell` check is
+      // false, so neither commit nor validate is invoked. But the
+      // handler still routes through `startEditing` for the
+      // editor's own focus-restore semantics.
+      const { clickHandler, sequence, restore } = setupClickHandlerProbe({
+        activeCell: { row: 0, cell: 0 },
+        lockActive: true,
+        commitReturns: true,
+      })
+      try {
+        clickHandler(undefined, { row: 0, cell: 0 })
+        expect(sequence).not.toContain('commitCurrentEdit')
+        expect(sequence).not.toContain('validate')
+        // startEditing still fires unconditionally for any defined args.
+        expect(sequence).toContain('setActiveCell')
+      } finally {
+        restore()
+      }
+    })
+
+    it('different-ROW click with failing commit: navigation blocked, no validate, no startEditing', () => {
+      // commitCurrentEdit returns false → tryCommitEditor returns
+      // false → handler short-circuits via preventDefault. No
+      // validate, no startEditing.
+      const { clickHandler, sequence, restore } = setupClickHandlerProbe({
+        activeCell: { row: 0, cell: 1 },
+        lockActive: true,
+        commitReturns: false,
+      })
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const preventDefault = vi.fn()
+      const stopImmediate = vi.fn()
+      try {
+        const result = clickHandler(
+          { preventDefault, stopImmediatePropagation: stopImmediate },
+          { row: 1, cell: 0 },
+        )
+        expect(result).toBe(false)
+        expect(sequence).toContain('commitCurrentEdit')
+        expect(sequence).not.toContain('validate')
+        expect(sequence).not.toContain('setActiveCell')
+        expect(preventDefault).toHaveBeenCalled()
+        expect(stopImmediate).toHaveBeenCalled()
+      } finally {
+        restore()
+        warnSpy.mockRestore()
+      }
+    })
+
+    it('same-ROW different-CELL click with failing commit: navigation blocked, no startEditing (round-18 #1 + round-17 #3)', () => {
+      // The round-18 widening also has to honor round-17 #3:
+      // when the commit fails for a same-row cell move, the click
+      // is blocked AND `_lastValidationFailed` is NOT set
+      // (covered by the existing structural test at round-17 #3).
+      const { probe, clickHandler, sequence, restore } = setupClickHandlerProbe({
+        activeCell: { row: 0, cell: 0 },
+        lockActive: true,
+        commitReturns: false,
+      })
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const preventDefault = vi.fn()
+      try {
+        const result = clickHandler(
+          { preventDefault, stopImmediatePropagation: vi.fn() },
+          { row: 0, cell: 1 },
+        )
+        expect(result).toBe(false)
+        expect(sequence).toContain('commitCurrentEdit')
+        expect(sequence).not.toContain('setActiveCell')
+        expect(preventDefault).toHaveBeenCalled()
+        // Round-17 #3: the click was blocked, but the flag must
+        // stay false — otherwise the next legitimate row-change
+        // gets its notify+advance suppressed.
+        expect(probe._lastValidationFailed).toBe(false)
+      } finally {
+        restore()
+        warnSpy.mockRestore()
+      }
+    })
   })
 })
 
@@ -1288,6 +1472,86 @@ describe('IdevsGridEditorBase — addButtonClick commits active editor BEFORE va
     try {
       probe.addButtonClick()
       expect(addItemSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      if (originalValidate) proto.validate = originalValidate
+      else delete proto.validate
+    }
+  })
+
+  it('commit + validate + addItem fire in the round-17 #2 order: commit → validate → addItem (round-19 #7)', () => {
+    // Round-19 #7 (pr-test-analyzer 7/10): the existing sanity test
+    // above only asserts that addItem WAS called when commit/validate
+    // both succeed. It does NOT prove the ORDERING, which is exactly
+    // what round-17 #2 fixed (commit BEFORE validate against the
+    // post-commit state, BOTH before addItem). Without this test
+    // a future refactor that re-introduces the bug pattern (validate
+    // first, then commit, then addItem) would still pass the sanity
+    // test.
+    const items: Record<string, unknown>[] = [{ a: 1 }]
+    const probe = makeProbe({
+      columns: [{ editor: () => undefined, field: 'a', visible: true, sourceItem: {} }],
+      items,
+    })
+    probe.slickGrid.getActiveCell = vi.fn(() => ({ row: 0, cell: 0 }))
+    const sequence: string[] = []
+    probe.slickGrid.getEditorLock = vi.fn(() => ({
+      isActive: () => true,
+      commitCurrentEdit: vi.fn(() => {
+        sequence.push('commitCurrentEdit')
+        return true
+      }),
+      cancelCurrentEdit: vi.fn(),
+    }))
+    const addItemSpy = probe.view.addItem as ReturnType<typeof vi.fn>
+    addItemSpy.mockImplementation(() => {
+      sequence.push('addItem')
+    })
+    const proto = Object.getPrototypeOf(probe) as { validate?: () => boolean }
+    const originalValidate = proto.validate
+    proto.validate = () => {
+      sequence.push('validate')
+      return true
+    }
+    try {
+      probe.addButtonClick()
+      expect(sequence).toEqual(['commitCurrentEdit', 'validate', 'addItem'])
+    } finally {
+      if (originalValidate) proto.validate = originalValidate
+      else delete proto.validate
+    }
+  })
+
+  it('rejects with no addItem when validate fails AFTER successful commit (round-19 #7 follow-up)', () => {
+    // Companion to the ordering test: commit succeeds, validate
+    // rejects → addItem MUST NOT run. The round-17 #2 contract is
+    // that we validate against the POST-commit row state; if that
+    // state is invalid the new row is not seeded.
+    const items: Record<string, unknown>[] = [{ a: 1 }]
+    const probe = makeProbe({
+      columns: [{ editor: () => undefined, field: 'a', visible: true, sourceItem: {} }],
+      items,
+    })
+    probe.slickGrid.getActiveCell = vi.fn(() => ({ row: 0, cell: 0 }))
+    const sequence: string[] = []
+    probe.slickGrid.getEditorLock = vi.fn(() => ({
+      isActive: () => true,
+      commitCurrentEdit: vi.fn(() => {
+        sequence.push('commitCurrentEdit')
+        return true
+      }),
+      cancelCurrentEdit: vi.fn(),
+    }))
+    const addItemSpy = probe.view.addItem as ReturnType<typeof vi.fn>
+    const proto = Object.getPrototypeOf(probe) as { validate?: () => boolean }
+    const originalValidate = proto.validate
+    proto.validate = () => {
+      sequence.push('validate')
+      return false
+    }
+    try {
+      probe.addButtonClick()
+      expect(sequence).toEqual(['commitCurrentEdit', 'validate'])
+      expect(addItemSpy).not.toHaveBeenCalled()
     } finally {
       if (originalValidate) proto.validate = originalValidate
       else delete proto.validate
@@ -1665,7 +1929,15 @@ describe('IdevsGridEditorBase — deleteCurrentRow transactional rollback (PR-4b
     expect(probe.view.deleteItem).toHaveBeenCalledWith(5)
   })
 
-  it('keeps row in _deletedRows when repaint fails after deleteItem', () => {
+  it('keeps row in _deletedRows when repaint fails after deleteItem (round-19 #1: catch + notify, no rethrow)', () => {
+    // Round-19 #1 (silent-failure-hunter): previously the repaint
+    // throw was allowed to propagate, leaving the UI in a half-
+    // deleted state and surfacing the throw to whoever invoked the
+    // delete button. Now we catch + log via console.warn + surface
+    // via `notifyError`. The data-layer delete already happened
+    // (deleteItem ran successfully before the throw), so we keep
+    // the row in `_deletedRows` and return cleanly instead of
+    // rethrowing.
     const items = [{ id: 5, name: 'A' }]
     const probe = makeProbe({ items })
     probe.slickGrid.getActiveCell = vi.fn(() => ({ row: 0, cell: 0 }))
@@ -1673,9 +1945,22 @@ describe('IdevsGridEditorBase — deleteCurrentRow transactional rollback (PR-4b
       throw new Error('render failed')
     })
 
-    expect(() => probe.deleteCurrentRow()).toThrow(/render failed/)
-    expect(probe._deletedRows).toEqual([{ id: 5, name: 'A' }])
-    expect(probe.view.deleteItem).toHaveBeenCalledWith(5)
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(() => probe.deleteCurrentRow()).not.toThrow()
+      expect(probe._deletedRows).toEqual([{ id: 5, name: 'A' }])
+      expect(probe.view.deleteItem).toHaveBeenCalledWith(5)
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('repaint after deleteItem threw'),
+        expect.any(Error),
+      )
+      // Subsequent setActiveCell should NOT run after the catch
+      // bail (we return early). The data-layer delete succeeded;
+      // the new active cell stays where the user left it.
+      expect(probe.slickGrid.setActiveCell).not.toHaveBeenCalled()
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 })
 
