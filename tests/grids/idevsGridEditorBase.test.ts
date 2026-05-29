@@ -892,6 +892,55 @@ describe('IdevsGridEditorBase — handleKeyDown last-cell commit routes through 
   })
 })
 
+describe('IdevsGridEditorBase — lastEditableCellIndex uses isCellEditable predicate (round-11 #2)', () => {
+  // Round-11 #2 (Copilot): the `lastEditableCellIndex` scan inside
+  // handleKeyDown used a weaker inline predicate than `isCellEditable`
+  // — specifically, it didn't check `sourceItem.readOnly`. If a
+  // read-only column appeared AFTER the real editable columns, it
+  // would still match the inline filter and lastEditableCellIndex
+  // would land on the wrong index — Tab/Enter wouldn't treat the
+  // actual last editable cell as the row edge, and add-row /
+  // row-transition logic ran from the wrong column.
+  //
+  // Same asymmetric-predicate pattern that round-7 #2 caught for
+  // addButtonClick.
+  //
+  // Why a source-text structural test (vs. runtime probe):
+  // handleKeyDown is an arrow class-field unreachable via
+  // `Object.create(prototype)` — see round-9 #1 for the same
+  // constraint. The `isCellEditable` predicate is itself fully
+  // covered at runtime; this test asserts the structural anti-
+  // regression that `handleKeyDown`'s last-cell scan routes through
+  // it.
+  it('source: handleKeyDown last-cell scan calls this.isCellEditable (no inline predicate)', async () => {
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const url = await import('node:url')
+    const here = path.dirname(url.fileURLToPath(import.meta.url))
+    const sourceFile = path.join(here, '..', '..', 'src', 'grids', 'idevsGridEditorBase.ts')
+    const src = await fs.readFile(sourceFile, 'utf-8')
+    // Find handleKeyDown's body.
+    const startIdx = src.indexOf('private handleKeyDown =')
+    expect(startIdx).toBeGreaterThan(-1)
+    const remainder = src.slice(startIdx)
+    const nextMemberIdx = remainder.search(/\n {2}(private|protected|public|override)\s/)
+    const handleKeyDownBody = nextMemberIdx > -1 ? remainder.slice(0, nextMemberIdx) : remainder
+    // Find the lastEditableCellIndex scan loop.
+    const lastEditableIdx = handleKeyDownBody.indexOf('lastEditableCellIndex')
+    expect(lastEditableIdx).toBeGreaterThan(-1)
+    // Slice forward a reasonable window to capture the scan body.
+    const scanBody = handleKeyDownBody.slice(lastEditableIdx, lastEditableIdx + 500)
+    // Anti-regression: the scan must call this.isCellEditable.
+    expect(scanBody).toMatch(/this\.isCellEditable\(/)
+    // It must NOT use the weaker inline predicate that the source
+    // had before the fix. The hallmark of the old predicate is
+    // checking `!!col.editor` AND `col.cssClass?.includes('slick-reorder-cell')`
+    // INSIDE the scan (without going through isCellEditable).
+    // After the fix, isCellEditable centralizes those checks.
+    expect(scanBody).not.toMatch(/!!col\.editor\s*&&\s*col\.visible\s*!==\s*false\s*&&\s*!col\.cssClass\?\.includes/)
+  })
+})
+
 describe('IdevsGridEditorBase — onBeforeEditCell honors tryCommitEditor result (round-10 #1)', () => {
   // Round-10 #1 (Copilot): the onBeforeEditCell handler called
   // tryCommitEditor() but ignored its return value, falling through

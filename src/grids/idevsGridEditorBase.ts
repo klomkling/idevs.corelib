@@ -857,16 +857,19 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
     if (!activeCell) return
 
     const isLastRow = activeCell.row === this.view.getLength() - 1
-    const columns = this.slickGrid.getColumns()
+    // Round-11 #2 (Copilot): route the last-editable-cell scan through
+    // `isCellEditable` so the predicate matches the rest of the
+    // navigation code (findNextEditableCell + addButtonClick).
+    // The prior inline filter ignored `sourceItem.readOnly`, so a
+    // read-only column appearing AFTER the real editable columns
+    // would NOT be skipped as the "last editable cell," and the
+    // add-row / row-transition edge detection ran from the wrong
+    // column. Same asymmetric-predicate pattern that round-7 #2
+    // caught for `addButtonClick`.
+    const columns = this.slickGrid.getColumns() as unknown as GridColumnArr
     let lastEditableCellIndex = -1
     for (let i = columns.length - 1; i >= 0; i--) {
-      const col = columns[i]
-      // Truthiness check — see addButtonClick for rationale.
-      if (
-        !!col.editor &&
-        col.visible !== false &&
-        !col.cssClass?.includes('slick-reorder-cell')
-      ) {
+      if (this.isCellEditable(activeCell.row, i, columns)) {
         lastEditableCellIndex = i
         break
       }

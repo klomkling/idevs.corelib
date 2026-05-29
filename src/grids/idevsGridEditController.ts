@@ -362,6 +362,18 @@ export class IdevsGridEditController<
 
   private readonly handleKeyDown = (e: KeyboardEvent, args: ArgsCell): void => {
     if (this.destroyed) return
+    // Round-11 #1 (Copilot): onKeyDown is subscribed unconditionally
+    // in the constructor — including for grids with `editable: false`.
+    // The round-10 #2 fix added `preventDefault()` + `stopImmediatePropagation()`
+    // below, but without an editable guard here, that fix actively
+    // BREAKS non-editable grids: it traps keyboard focus and mutates
+    // active-cell state on grids where the user isn't editing
+    // anything. Matches the `loadEditor` guard pattern
+    // (`if (this.destroyed || !this.editable) return`).
+    if (!this.editable) {
+      this.enterKey = false
+      return
+    }
     if (e.key !== 'Enter' && e.key !== 'Tab') {
       this.enterKey = false
       return
@@ -869,7 +881,17 @@ export class IdevsGridEditController<
     }).changeSelect2(e => {
       const val = e.originalEvent.val
       item[column.field] = val
+      // Round-11 #3 (Copilot): when the Select2 commit replaces the
+      // editor container with text via `target.textContent = ...`,
+      // the `text-white` class that the lookup added at mount time
+      // (so the dark Select2 dropdown didn't bleed into the cell)
+      // is left on the cell. That makes the committed value render
+      // as white text on a normal background — invisible until
+      // another cleanup path (row change, toggle-off) fires. Strip
+      // both editor classes here via the shared cleanup helper so
+      // the committed text is visible immediately.
       target.textContent = val === null || val === undefined ? '' : String(val)
+      this.cleanupCellEditorClasses(target)
       notifyCellChange()
     })
   }

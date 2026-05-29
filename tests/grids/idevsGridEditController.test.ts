@@ -812,6 +812,75 @@ describe('IdevsGridEditController — editor marker + controller-managed toggle-
     expect(oldCell.classList.contains('text-white')).toBe(false)
   })
 
+  it('lookup change-handler strips text-white on commit (round-11 #3)', () => {
+    // Round-11 #3 (Copilot): when the Select2 commit replaces the
+    // editor container with text via `target.textContent = ...`,
+    // the `text-white` class added at mount time was left on the
+    // cell. White text on a normal background → committed value
+    // invisible until another cleanup path fires (row change,
+    // toggle-off). Fix: call cleanupCellEditorClasses(target) in
+    // the change handler. We exercise the rendered text directly
+    // via the public mount + change-handler path, since spinning up
+    // a real LookupEditor instance would require Serenity service-
+    // registry wiring beyond what the harness mocks.
+    //
+    // Custom renderer that emulates the lookup pattern: mounts a
+    // marked editor + adds text-white, then commits via a click
+    // simulating the Select2 change handler.
+    const { targetCell, click } = buildRendererProbe()
+    let committedTarget: HTMLElement | undefined
+    const renderer: IdevsCellEditorRender = ({ target, appendEditorChild }) => {
+      const container = document.createElement('div')
+      appendEditorChild(container)
+      target.classList.add('text-white')
+      // Stash the target so the test can drive a synthetic commit.
+      committedTarget = target
+    }
+    controller!.registerCellEditor('Custom.X', renderer)
+    click()
+    expect(targetCell.classList.contains('with-editor')).toBe(true)
+    expect(targetCell.classList.contains('text-white')).toBe(true)
+
+    // Simulate the lookup's change-handler: replace contents via
+    // textContent + cleanupCellEditorClasses (the round-11 #3 fix
+    // mirrors this pattern in renderLookupEditor's changeSelect2
+    // callback).
+    expect(committedTarget).toBeDefined()
+    committedTarget!.textContent = 'selected-value'
+    ;(controller as unknown as { cleanupCellEditorClasses(c: HTMLElement): void }).cleanupCellEditorClasses(
+      committedTarget!,
+    )
+
+    // Committed text is visible — both editor classes stripped.
+    expect(targetCell.textContent).toBe('selected-value')
+    expect(targetCell.classList.contains('with-editor')).toBe(false)
+    expect(targetCell.classList.contains('text-white')).toBe(false)
+  })
+
+  it('source: renderLookupEditor changeSelect2 callback calls cleanupCellEditorClasses (round-11 #3)', async () => {
+    // Direct source-level anti-regression: confirm that the lookup
+    // renderer's change handler does the cleanup call. (The runtime
+    // test above exercises the contract via the shared
+    // cleanupCellEditorClasses helper; this test pins the call site
+    // in the actual lookup renderer body so a refactor that drops
+    // the cleanup would fail.)
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const url = await import('node:url')
+    const here = path.dirname(url.fileURLToPath(import.meta.url))
+    const sourceFile = path.join(here, '..', '..', 'src', 'grids', 'idevsGridEditController.ts')
+    const src = await fs.readFile(sourceFile, 'utf-8')
+    const startIdx = src.indexOf('renderLookupEditor:')
+    expect(startIdx).toBeGreaterThan(-1)
+    const remainder = src.slice(startIdx)
+    // Slice forward to the next renderer (renderServiceLookupEditor)
+    // to scope to just this body.
+    const nextRendererIdx = remainder.indexOf('renderServiceLookupEditor')
+    const body = nextRendererIdx > -1 ? remainder.slice(0, nextRendererIdx) : remainder
+    // Anti-regression: the change handler calls cleanupCellEditorClasses.
+    expect(body).toMatch(/this\.cleanupCellEditorClasses\(target\)/)
+  })
+
   it('toggle-off strips BOTH with-editor AND text-white classes (round-7 #5)', () => {
     // Round 7 #5: prior toggle-off only removed `with-editor`. The
     // Lookup renderer adds BOTH `with-editor` (the controller) AND
@@ -1096,6 +1165,42 @@ describe('IdevsGridEditController — handleKeyDown preventDefault on Tab/Enter 
     )
     expect(preventDefault).toHaveBeenCalledTimes(1)
     expect(stopImmediatePropagation).toHaveBeenCalledTimes(1)
+  })
+
+  it('does NOT preventDefault Tab/Enter when editable=false (round-11 #1)', () => {
+    // Round-11 #1 (Copilot): onKeyDown is subscribed unconditionally,
+    // but handleKeyDown only handles Tab/Enter when the grid is
+    // editable. The round-10 #2 preventDefault must NOT fire on
+    // non-editable grids — otherwise the controller traps keyboard
+    // focus on grids the user isn't editing.
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: false, // non-editable grid
+      autoEdit: false,
+      columns: [{ field: 'a', visible: true, sourceItem: {} }],
+      items: [{ a: 1 }],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const preventDefault = vi.fn()
+    const stopImmediatePropagation = vi.fn()
+    const keyHandler = slickGrid.onKeyDown.subscribers[0]
+    // Subscriber MUST be registered (we always subscribe), but it
+    // must short-circuit on non-editable grids.
+    expect(keyHandler).toBeDefined()
+    keyHandler(
+      { key: 'Tab', shiftKey: false, preventDefault, stopImmediatePropagation },
+      { row: 0, cell: 0 } as Record<string, unknown>,
+    )
+    expect(preventDefault).not.toHaveBeenCalled()
+    expect(stopImmediatePropagation).not.toHaveBeenCalled()
+    // Same for Enter.
+    keyHandler(
+      { key: 'Enter', shiftKey: false, preventDefault, stopImmediatePropagation },
+      { row: 0, cell: 0 } as Record<string, unknown>,
+    )
+    expect(preventDefault).not.toHaveBeenCalled()
+    expect(stopImmediatePropagation).not.toHaveBeenCalled()
   })
 
   it('does NOT call preventDefault for keys other than Tab/Enter', () => {
