@@ -892,6 +892,84 @@ describe('IdevsGridEditorBase — handleKeyDown last-cell commit routes through 
   })
 })
 
+describe('IdevsGridEditorBase — handleKeyDown commits BEFORE row-validate (round-12 #1)', () => {
+  // Round-12 #1 (Copilot): the prior order in the last-cell branch
+  // was `validate(currentItem)` → `tryCommitEditor` → `addButtonClick`.
+  // Bug: row-validation read `currentItem` BEFORE the editor commit
+  // wrote the new value into it. An invalid last-cell change passed
+  // row-validation (old value), then commit persisted the bad value,
+  // then focus moved without re-validating the post-commit state.
+  //
+  // Fix: commit FIRST (so currentItem reflects the post-commit
+  // state), then validate THAT.
+  //
+  // Why a source-text test: handleKeyDown is an arrow class-field
+  // unreachable via Object.create — see round-9 #1 for the same
+  // constraint. The validate + tryCommitEditor runtime contracts are
+  // both exhaustively tested individually; this test asserts the
+  // ORDERING anti-regression.
+  it('source: last-cell branch calls tryCommitEditor BEFORE validate(currentItem)', async () => {
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const url = await import('node:url')
+    const here = path.dirname(url.fileURLToPath(import.meta.url))
+    const sourceFile = path.join(here, '..', '..', 'src', 'grids', 'idevsGridEditorBase.ts')
+    const src = await fs.readFile(sourceFile, 'utf-8')
+    const startIdx = src.indexOf('private handleKeyDown =')
+    expect(startIdx).toBeGreaterThan(-1)
+    const remainder = src.slice(startIdx)
+    const nextMemberIdx = remainder.search(/\n {2}(private|protected|public|override)\s/)
+    const handleKeyDownBody = nextMemberIdx > -1 ? remainder.slice(0, nextMemberIdx) : remainder
+
+    // Scope to the last-cell branch.
+    const lastCellIdx = handleKeyDownBody.indexOf('activeCell.cell === lastEditableCellIndex')
+    expect(lastCellIdx).toBeGreaterThan(-1)
+    const restOfBranch = handleKeyDownBody.slice(lastCellIdx)
+    const elseBranchIdx = restOfBranch.indexOf('} else if (this.slickGrid.getEditorLock()')
+    const lastCellBranch =
+      elseBranchIdx > -1 ? restOfBranch.slice(0, elseBranchIdx) : restOfBranch
+
+    // Locate the call positions within the branch.
+    const tryCommitIdx = lastCellBranch.search(/this\.tryCommitEditor\(\)/)
+    const validateIdx = lastCellBranch.search(/this\.validate\(currentItem,\s*activeCell\.row\)/)
+    expect(tryCommitIdx).toBeGreaterThan(-1)
+    expect(validateIdx).toBeGreaterThan(-1)
+    // The ordering: tryCommitEditor must appear BEFORE validate.
+    // The reverse ordering (the bug pattern) would have validate
+    // appear first.
+    expect(tryCommitIdx).toBeLessThan(validateIdx)
+  })
+
+  it('source: currentItem is read AFTER tryCommitEditor (so it reflects post-commit state)', async () => {
+    // Defensive corollary: `getDataItem` (which reads `currentItem`)
+    // must also happen AFTER tryCommitEditor — if `currentItem` is
+    // captured before commit, even a correctly-ordered validate
+    // would see the stale value via the captured reference.
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const url = await import('node:url')
+    const here = path.dirname(url.fileURLToPath(import.meta.url))
+    const sourceFile = path.join(here, '..', '..', 'src', 'grids', 'idevsGridEditorBase.ts')
+    const src = await fs.readFile(sourceFile, 'utf-8')
+    const startIdx = src.indexOf('private handleKeyDown =')
+    const remainder = src.slice(startIdx)
+    const nextMemberIdx = remainder.search(/\n {2}(private|protected|public|override)\s/)
+    const handleKeyDownBody = nextMemberIdx > -1 ? remainder.slice(0, nextMemberIdx) : remainder
+
+    const lastCellIdx = handleKeyDownBody.indexOf('activeCell.cell === lastEditableCellIndex')
+    const restOfBranch = handleKeyDownBody.slice(lastCellIdx)
+    const elseBranchIdx = restOfBranch.indexOf('} else if (this.slickGrid.getEditorLock()')
+    const lastCellBranch =
+      elseBranchIdx > -1 ? restOfBranch.slice(0, elseBranchIdx) : restOfBranch
+
+    const tryCommitIdx = lastCellBranch.search(/this\.tryCommitEditor\(\)/)
+    const getDataItemIdx = lastCellBranch.search(/this\.slickGrid\.getDataItem\(activeCell\.row\)/)
+    expect(tryCommitIdx).toBeGreaterThan(-1)
+    expect(getDataItemIdx).toBeGreaterThan(-1)
+    expect(tryCommitIdx).toBeLessThan(getDataItemIdx)
+  })
+})
+
 describe('IdevsGridEditorBase — lastEditableCellIndex uses isCellEditable predicate (round-11 #2)', () => {
   // Round-11 #2 (Copilot): the `lastEditableCellIndex` scan inside
   // handleKeyDown used a weaker inline predicate than `isCellEditable`

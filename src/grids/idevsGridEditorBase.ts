@@ -879,24 +879,36 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
     e.stopImmediatePropagation()
 
     if (activeCell.cell === lastEditableCellIndex) {
-      const currentItem = this.slickGrid.getDataItem(activeCell.row) as TEntity
-      if (this.validate(currentItem, activeCell.row)) {
-        // Round-9 #1: route through `tryCommitEditor` (NOT the raw
-        // `commitCurrentEdit` from prior code). The raw call ignored
-        // both failure modes — `commitCurrentEdit` returning `false`
-        // (validation rejection) AND throwing (programmer/runtime
-        // error). With the raw path, a rejected cell value could
-        // still trigger an `addButtonClick`/new row OR propagate the
-        // throw upward to the SlickGrid event bus. Now: if commit
-        // fails, halt — no add-row, no nav.
-        if (!this.tryCommitEditor()) {
-          continueMoving = false
-        } else if (isLastRow && this.autoNewRow()) {
-          this.addButtonClick()
+      // Round-12 #1 (Copilot): commit FIRST, then validate the row
+      // against the POST-commit state.
+      //
+      // Prior order was validate(currentItem) → tryCommitEditor →
+      // addRow. The bug: `validate(currentItem, activeCell.row)`
+      // read `currentItem` BEFORE the editor commit wrote the typed
+      // value into it. So an invalid last-cell change would pass
+      // row-validation (which saw the OLD value), then tryCommitEditor
+      // would persist the invalid value, then `addButtonClick` /
+      // `moveFocusToNextCell` would proceed without re-validating
+      // the actual to-be-persisted row state.
+      //
+      // Correct order: commit first so currentItem reflects the
+      // post-commit state, then validate against THAT state.
+      //
+      // Round-9 #1 covered the commit error-handling contract
+      // (tryCommitEditor, not raw commitCurrentEdit). Round-12 #1
+      // is purely about ORDERING.
+      if (!this.tryCommitEditor()) {
+        continueMoving = false
+      } else {
+        const currentItem = this.slickGrid.getDataItem(activeCell.row) as TEntity
+        if (this.validate(currentItem, activeCell.row)) {
+          if (isLastRow && this.autoNewRow()) {
+            this.addButtonClick()
+            continueMoving = false
+          }
+        } else {
           continueMoving = false
         }
-      } else {
-        continueMoving = false
       }
     } else if (this.slickGrid.getEditorLock().isActive()) {
       if (!this.tryCommitEditor()) {
