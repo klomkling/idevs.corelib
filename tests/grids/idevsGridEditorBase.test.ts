@@ -1132,6 +1132,87 @@ describe('IdevsGridEditorBase — click handler commits active editor BEFORE sta
     // ordering.)
     expect(clickHandlerBody).not.toMatch(/this\._lastValidationFailed\s*=\s*true/)
   })
+
+  it('source: click handler commits when row OR cell changes (round-18 #1 [P1] — same-row cell click)', async () => {
+    // Round-18 #1 [P1] (Copilot): round-17 #1 gated the commit by
+    // `activeCell.row !== args.row` only. Editing row 0 cell 1 and
+    // clicking row 0 cell 2 hit the SAME row, so the gate skipped
+    // tryCommitEditor; startEditing then tore down the active
+    // editor without committing. The original P1 data-loss path
+    // remained for same-row navigation.
+    //
+    // Fix: gate by row OR cell change. validate() still runs only
+    // on actual row changes.
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const url = await import('node:url')
+    const here = path.dirname(url.fileURLToPath(import.meta.url))
+    const sourceFile = path.join(here, '..', '..', 'src', 'grids', 'idevsGridEditorBase.ts')
+    const src = await fs.readFile(sourceFile, 'utf-8')
+
+    // Locate the click handler block. Slice from `clickEventName`
+    // (the click subscription wiring) to the next addEventListener
+    // (Tab/Enter navigation).
+    const clickEventNameIdx = src.indexOf('const clickEventName')
+    expect(clickEventNameIdx).toBeGreaterThan(-1)
+    const afterClick = src.slice(clickEventNameIdx)
+    const nextHandlerIdx = afterClick.indexOf('// Tab / Enter navigation')
+    const clickHandlerBody =
+      nextHandlerIdx > -1 ? afterClick.slice(0, nextHandlerIdx) : afterClick
+
+    // The gating condition before tryCommitEditor MUST cover
+    // same-row cell changes too — not just `row !== args.row`.
+    // The bug pattern was a sole `activeCell.row !== args.row`
+    // check. The fix must include either `activeCell.cell !== args.cell`
+    // OR a compound condition that covers both.
+    //
+    // Assert: cell-difference is part of the guard.
+    expect(clickHandlerBody).toMatch(/activeCell\.cell\s*!==\s*args[?]?\.cell/)
+    // And: the commit call IS present in this handler.
+    expect(clickHandlerBody).toMatch(/this\.tryCommitEditor\(\)/)
+  })
+
+  it('source: validate(currentItem) still runs ONLY on actual row changes (round-18 #1 preservation)', async () => {
+    // Round-17 #1's contract was: row-level validate runs only for
+    // row changes. Round-18 #1 widens the OUTER commit-gate to
+    // cover same-row cell moves, but the INNER validate must stay
+    // row-only — otherwise same-row navigation would trigger
+    // row-validation needlessly.
+    //
+    // The fix's structure: the `validate(currentItem, ...)` call
+    // is inside an `if (activeCell.row !== args.row)` branch within
+    // the wider commit-gate block.
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const url = await import('node:url')
+    const here = path.dirname(url.fileURLToPath(import.meta.url))
+    const sourceFile = path.join(here, '..', '..', 'src', 'grids', 'idevsGridEditorBase.ts')
+    const src = await fs.readFile(sourceFile, 'utf-8')
+
+    const clickEventNameIdx = src.indexOf('const clickEventName')
+    const afterClick = src.slice(clickEventNameIdx)
+    const nextHandlerIdx = afterClick.indexOf('// Tab / Enter navigation')
+    const clickHandlerBody =
+      nextHandlerIdx > -1 ? afterClick.slice(0, nextHandlerIdx) : afterClick
+
+    // Locate the validate call.
+    const validateIdx = clickHandlerBody.search(/this\.validate\(currentItem,/)
+    expect(validateIdx).toBeGreaterThan(-1)
+    // Search backward for the nearest `if (activeCell.row !== args` —
+    // must be a row-only gate, NOT the outer compound gate that
+    // covers cell changes too.
+    const beforeValidate = clickHandlerBody.slice(0, validateIdx)
+    const lastIfIdx = Math.max(
+      beforeValidate.lastIndexOf('if (activeCell.row !== args'),
+      beforeValidate.lastIndexOf("if (activeCell.row !== args!"),
+    )
+    expect(lastIfIdx).toBeGreaterThan(-1)
+    // Between that if and the validate call, there should be NO
+    // `||` (i.e., the gate is a plain row-difference check, not a
+    // compound row-or-cell check).
+    const between = beforeValidate.slice(lastIfIdx)
+    expect(between.includes('||')).toBe(false)
+  })
 })
 
 describe('IdevsGridEditorBase — addButtonClick commits active editor BEFORE validate+addRow (round-17 #2 [P1] Copilot)', () => {

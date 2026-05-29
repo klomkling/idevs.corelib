@@ -543,38 +543,48 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
         return false
       }
       const activeCell = this.slickGrid.getActiveCell()
-      if (
-        activeCell &&
+      const isDifferentCell =
+        !!activeCell &&
         activeCell.row !== undefined &&
+        activeCell.cell !== undefined &&
         args?.row !== undefined &&
-        activeCell.row !== args.row
-      ) {
-        // Round-17 #1 [P1] (Copilot): commit the active editor BEFORE
-        // moving to another cell. `startEditing` below calls
-        // `setActiveCell`, which tears down the current editor
-        // without committing it — the in-flight value would be lost.
-        // Route through `tryCommitEditor` so commit failures (validation
-        // rejection or throw) ALSO halt the row navigation.
+        args?.cell !== undefined &&
+        (activeCell.row !== args.row || activeCell.cell !== args.cell)
+      if (isDifferentCell && activeCell) {
+        // Round-17 #1 [P1] (Copilot) + round-18 #1 [P1] (Copilot):
+        // commit the active editor BEFORE moving to another cell.
+        // `startEditing` below calls `setActiveCell`, which tears
+        // down the current editor without committing — the in-flight
+        // value would be lost.
+        //
+        // Round-17 #1 only gated this commit by `row !== args.row`
+        // → it MISSED same-row cell-to-cell clicks (edit row 0
+        // cell 1, click row 0 cell 2). The same data-loss path
+        // remained. Round-18 #1 widens the guard to "row OR cell
+        // changed."
+        //
+        // Validation runs ONLY for actual row changes (preserves
+        // round-17 #1's contract). Same-row cell moves are committed
+        // but not row-validated — the user is still editing the
+        // same row.
         if (!this.tryCommitEditor()) {
-          // Round-17 #3 (Copilot): when we block the click here,
-          // SlickGrid never changes the active cell so
-          // onActiveCellChanged DOES NOT fire. Setting
-          // `_lastValidationFailed = true` would persist
-          // indefinitely and incorrectly suppress the NEXT row-
-          // change notify + advance. Do NOT set the flag in
-          // blocked-click paths.
+          // Round-17 #3 (Copilot): blocking the click prevents
+          // SlickGrid from changing the active cell, so
+          // onActiveCellChanged DOES NOT fire. The flag would
+          // persist indefinitely. Do NOT set it in blocked-click
+          // paths.
           e?.stopImmediatePropagation?.()
           e?.preventDefault?.()
           return false
         }
-        const currentItem = this.slickGrid.getDataItem(activeCell.row) as TEntity
-        if (!this.validate(currentItem, activeCell.row)) {
-          // Same round-17 #3 reasoning: blocking the click prevents
-          // onActiveCellChanged from firing, so the flag would
-          // never be consumed. Do NOT set it here.
-          e?.stopImmediatePropagation?.()
-          e?.preventDefault?.()
-          return false
+        if (activeCell.row !== args!.row) {
+          const currentItem = this.slickGrid.getDataItem(activeCell.row) as TEntity
+          if (!this.validate(currentItem, activeCell.row)) {
+            // Same round-17 #3 reasoning.
+            e?.stopImmediatePropagation?.()
+            e?.preventDefault?.()
+            return false
+          }
         }
       }
       if (args) this.startEditing(args.row, args.cell)
