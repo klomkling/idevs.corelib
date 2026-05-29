@@ -427,6 +427,19 @@ export class IdevsGridEditController<
           }
         }
       }
+      // Round-14 #1 (Copilot): bail out before notifying / mutating
+      // `args` when no editable cell was found in the target
+      // direction. `firstEditableCell()` returns
+      // `header.childElementCount` (out-of-range high) when nothing
+      // is editable; `lastEditableCell()` returns -1 (out-of-range
+      // low). Either value would otherwise be notified to
+      // onActiveCellChanged and written back to SlickGrid's args,
+      // landing the active cell at a non-existent column.
+      const headerCount = this.grid.slickGrid.getHeader().childElementCount
+      if (cell < 0 || cell >= headerCount) {
+        this.enterKey = false
+        return
+      }
       // Args mutation deferred to the success path: capture row/cell
       // locally, build a copy for notify(), and only commit back to
       // the SlickGrid-owned `args` object AFTER notify() returns

@@ -1256,6 +1256,126 @@ describe('IdevsGridEditController — handleKeyDown preventDefault on Tab/Enter 
   })
 })
 
+describe('IdevsGridEditController — handleKeyDown bounds-check for unfound editable cells (round-14 #1)', () => {
+  // Round-14 #1 (Copilot): when no editable cell is found in the
+  // target direction, `firstEditableCell()` returns
+  // `header.childElementCount` (out-of-range high) and
+  // `lastEditableCell()` returns -1 (out-of-range low). The prior
+  // code passed those values through to `notify(onActiveCellChanged)`
+  // and wrote them back to SlickGrid's args, landing the active
+  // cell at a non-existent column.
+  //
+  // Fix: bail out before notify + args mutation when computed cell
+  // is outside [0, headerCount).
+  it('Tab does NOT notify when no editable cell exists in the target row', () => {
+    // Build a grid where ALL columns are read-only (no editable
+    // cells at all). The Tab nav will compute
+    // `cell = firstEditableCell()` which returns headerCount → out
+    // of range.
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: [
+        { field: 'a', visible: true, sourceItem: { readOnly: true } },
+        { field: 'b', visible: true, sourceItem: { readOnly: true } },
+      ],
+      items: [{ a: 1, b: 2 }],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const onActiveCellChangedNotify = vi.fn()
+    slickGrid.onActiveCellChanged.notify = onActiveCellChangedNotify
+
+    const argsObject = { row: 0, cell: 0 } as Record<string, unknown>
+    const keyHandler = slickGrid.onKeyDown.subscribers[0]
+    keyHandler(
+      {
+        key: 'Tab',
+        shiftKey: false,
+        preventDefault: () => undefined,
+        stopImmediatePropagation: () => undefined,
+      },
+      argsObject,
+    )
+
+    // Notify must NOT have been called with an out-of-range cell.
+    expect(onActiveCellChangedNotify).not.toHaveBeenCalled()
+    // Original args MUST be untouched.
+    expect(argsObject.row).toBe(0)
+    expect(argsObject.cell).toBe(0)
+  })
+
+  it('Shift+Tab does NOT notify when no editable predecessor exists', () => {
+    // Inverse: previousCell + lastEditableCell both return out-of-
+    // range when no editable cell exists.
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: [
+        { field: 'a', visible: true, sourceItem: { readOnly: true } },
+        { field: 'b', visible: true, sourceItem: { readOnly: true } },
+      ],
+      items: [{ a: 1, b: 2 }],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const onActiveCellChangedNotify = vi.fn()
+    slickGrid.onActiveCellChanged.notify = onActiveCellChangedNotify
+
+    const argsObject = { row: 0, cell: 1 } as Record<string, unknown>
+    const keyHandler = slickGrid.onKeyDown.subscribers[0]
+    keyHandler(
+      {
+        key: 'Tab',
+        shiftKey: true,
+        preventDefault: () => undefined,
+        stopImmediatePropagation: () => undefined,
+      },
+      argsObject,
+    )
+    expect(onActiveCellChangedNotify).not.toHaveBeenCalled()
+    expect(argsObject.row).toBe(0)
+    expect(argsObject.cell).toBe(1)
+  })
+
+  it('happy path: Tab DOES notify when an editable cell IS found (sanity)', () => {
+    // Confirm round-14 #1 didn't break the normal navigation flow.
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: [
+        { field: 'a', visible: true, sourceItem: {} },
+        { field: 'b', visible: true, sourceItem: {} },
+      ],
+      items: [{ a: 1, b: 2 }],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    ;(controller as unknown as { currentRow: number | null }).currentRow = 0
+    ;(controller as unknown as { currentCell: number | null }).currentCell = 0
+    const onActiveCellChangedNotify = vi.fn()
+    slickGrid.onActiveCellChanged.notify = onActiveCellChangedNotify
+
+    const keyHandler = slickGrid.onKeyDown.subscribers[0]
+    keyHandler(
+      {
+        key: 'Tab',
+        shiftKey: false,
+        preventDefault: () => undefined,
+        stopImmediatePropagation: () => undefined,
+      },
+      { row: 0, cell: 0 } as Record<string, unknown>,
+    )
+    expect(onActiveCellChangedNotify).toHaveBeenCalledTimes(1)
+    const notified = onActiveCellChangedNotify.mock.calls[0]![0] as { row: number; cell: number }
+    expect(notified.row).toBe(0)
+    expect(notified.cell).toBe(1)
+  })
+})
+
 describe('IdevsGridEditController — handleKeyDown try/catch (PR-4b round-5 #6)', () => {
   // Round 5 #6: SlickGrid's notify() doesn't catch subscriber throws.
   // If `slickGrid.getColumns()` (called inside refreshColumnSnapshot)

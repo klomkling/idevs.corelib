@@ -362,16 +362,60 @@ describe('IdevsSearchGrid — onClick + authorization gating', () => {
     }
   })
 
-  it('onClick is defensive when e.target is a Text node (round-10 #3)', () => {
-    // Round-10 #3 (Copilot): `e.target` is `EventTarget | null` per
-    // spec — it can be a Text node, document, window, SVGElement,
-    // etc. Only `Element` subclasses have `.closest()`. The prior
-    // null-guard alone wasn't enough — a Text-node target would
-    // type-check at compile time but throw at runtime. Fix: narrow
-    // via `instanceof Element` so Text-node targets are silently
-    // dropped instead of crashing.
+  it('onClick highlights the row when e.target is a Text node inside it (round-14 #2)', () => {
+    // Round-14 #2 (Copilot): round-10 #3 made onClick BAIL for any
+    // non-Element target. That dropped legitimate clicks where the
+    // user clicked plain text content — browsers fire click events
+    // with Text-node targets in that case. The row should still be
+    // highlighted AND the synthetic onCellChange should still fire.
+    // Round-14 normalizes Text-node targets to their parentElement.
+    const probe = makeProbe()
+    const viewport = document.createElement('div')
+    viewport.className = 'slick-viewport'
+    document.body.appendChild(viewport)
+    const slickRow = document.createElement('div')
+    slickRow.className = 'slick-row'
+    viewport.appendChild(slickRow)
+    const cellNode = document.createElement('div')
+    cellNode.className = 'slick-cell'
+    slickRow.appendChild(cellNode)
+    // The text node lives inside the cell — the realistic case.
+    const textNode = document.createTextNode('cell value')
+    cellNode.appendChild(textNode)
+
+    const evt = new MouseEvent('click', { bubbles: true })
+    Object.defineProperty(evt, 'target', { value: textNode })
+
+    const entityGridProto = Object.getPrototypeOf(IdevsSearchGrid.prototype) as {
+      onClick?: () => void
+    }
+    const originalSuper = entityGridProto.onClick
+    entityGridProto.onClick = vi.fn()
+    try {
+      expect(() => probe.onClick(evt, 0, 0)).not.toThrow()
+    } finally {
+      if (originalSuper) entityGridProto.onClick = originalSuper
+      else delete entityGridProto.onClick
+    }
+
+    // Row IS highlighted — the bug round-14 #2 fixed.
+    expect(slickRow.classList.contains('active')).toBe(true)
+    // Synthetic notify also fired — the parent dialog gets the row.
+    expect(probe.slickGrid.onCellChange.notify).toHaveBeenCalled()
+  })
+
+  it('onClick is defensive when e.target is a Text node with NO parent element (round-10 #3)', () => {
+    // Round-10 #3 / round-14 #2: `e.target` is `EventTarget | null`.
+    // Round-10 #3 fixed the `target.closest is not a function` runtime
+    // crash; round-14 #2 then made the fix less strict by normalizing
+    // Text-node targets to their parent Element. THIS test covers
+    // the remaining defensive case: a detached Text node (no
+    // parentElement) — the handler must still bail without crashing,
+    // and there's no row to highlight either way.
     const probe = makeProbe()
     const textNode = document.createTextNode('clicked-text')
+    // Sanity: this Text node has no parent.
+    expect(textNode.parentElement).toBeNull()
     const evt = new MouseEvent('click')
     Object.defineProperty(evt, 'target', { value: textNode })
 

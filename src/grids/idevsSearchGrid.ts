@@ -279,16 +279,31 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
 
     // Highlight the clicked row's slick-row sibling.
     //
-    // Round-10 #3 (Copilot): `e.target` is `EventTarget | null` per
-    // spec — it can be a Text node, an SVGElement, a window/document
-    // node, etc. Only `Element` instances (and their HTMLElement /
-    // SVGElement subtypes) have `.closest()`. The previous null-
-    // guard alone wasn't enough — clicking on a text-node child
-    // would type-check fine but throw `target.closest is not a
-    // function` at runtime. Narrow via `instanceof Element` instead.
+    // Round-10 #3 + round-14 #2 (Copilot): `e.target` is
+    // `EventTarget | null` per spec — it can be a Text node, an
+    // SVGElement, a window/document node, etc. Only `Element`
+    // instances (and their subtypes) have `.closest()`. The
+    // round-10 #3 fix (just bail when `!(target instanceof Element)`)
+    // was too strict: clicks on a Text node INSIDE a slick row are
+    // real, legitimate row clicks — browsers fire mousedown/click
+    // with Text-node targets when the user clicks plain text
+    // content. Bailing dropped both the row-highlight AND the
+    // synthetic onCellChange notification, so parent dialogs
+    // listening for the selected row never saw it.
+    //
+    // Round-14 #2: normalize Text-node (and other Node) targets to
+    // the closest Element ancestor before running `closest(...)`.
+    // Only bail when no Element ancestor exists (document, window,
+    // fully detached Text node).
     const rawTarget = e.target
-    if (!(rawTarget instanceof Element)) return
-    const target = rawTarget
+    let target: Element | null = null
+    if (rawTarget instanceof Element) {
+      target = rawTarget
+    } else if (rawTarget instanceof Node) {
+      // Text nodes have `parentElement`; if it's an Element, use it.
+      target = rawTarget.parentElement
+    }
+    if (!target) return
     const viewport = target.closest('.slick-viewport')
     if (viewport) {
       viewport
