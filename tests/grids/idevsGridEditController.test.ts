@@ -1340,6 +1340,68 @@ describe('IdevsGridEditController — handleKeyDown bounds-check for unfound edi
     expect(argsObject.cell).toBe(1)
   })
 
+  it('Tab on empty grid does NOT notify with row=0 (round-15 #1)', () => {
+    // Round-15 #1 (Copilot): an empty grid has no rows to navigate
+    // to. The prior code seeded `row = this.currentRow ?? 0` and
+    // proceeded to notify(onActiveCellChanged), driving downstream
+    // handlers with a row index that doesn't exist. Fix: bail when
+    // maxRows === 0.
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: [{ field: 'a', visible: true, sourceItem: {} }],
+      items: [], // ← empty grid
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const onActiveCellChangedNotify = vi.fn()
+    slickGrid.onActiveCellChanged.notify = onActiveCellChangedNotify
+
+    const argsObject = { row: 0, cell: 0 } as Record<string, unknown>
+    const keyHandler = slickGrid.onKeyDown.subscribers[0]
+    keyHandler(
+      {
+        key: 'Tab',
+        shiftKey: false,
+        preventDefault: () => undefined,
+        stopImmediatePropagation: () => undefined,
+      },
+      argsObject,
+    )
+    expect(onActiveCellChangedNotify).not.toHaveBeenCalled()
+    // Original args untouched.
+    expect(argsObject.row).toBe(0)
+    expect(argsObject.cell).toBe(0)
+  })
+
+  it('Enter on empty grid does NOT notify either (round-15 #1)', () => {
+    // Enter follows the same code path as Tab — same bail applies.
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: [{ field: 'a', visible: true, sourceItem: {} }],
+      items: [],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const onActiveCellChangedNotify = vi.fn()
+    slickGrid.onActiveCellChanged.notify = onActiveCellChangedNotify
+
+    const keyHandler = slickGrid.onKeyDown.subscribers[0]
+    keyHandler(
+      {
+        key: 'Enter',
+        shiftKey: false,
+        preventDefault: () => undefined,
+        stopImmediatePropagation: () => undefined,
+      },
+      { row: 0, cell: 0 } as Record<string, unknown>,
+    )
+    expect(onActiveCellChangedNotify).not.toHaveBeenCalled()
+  })
+
   it('happy path: Tab DOES notify when an editable cell IS found (sanity)', () => {
     // Confirm round-14 #1 didn't break the normal navigation flow.
     const { grid, slickGrid } = makeFakeGrid({

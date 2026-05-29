@@ -402,6 +402,17 @@ export class IdevsGridEditController<
       // up in the row-overflow clamp below.
       this.refreshColumnSnapshot()
       const maxRows = this.grid.getItems().length
+      // Round-15 #1 (Copilot): empty grid → there's no row to
+      // navigate to. The prior code would still seed `row = 0` and
+      // proceed to notify(onActiveCellChanged) with a row index
+      // that doesn't exist. Downstream handlers (active-cell
+      // change subscribers, registered cell editors) would then
+      // try to fetch `getDataItem(0)` on a grid with zero items,
+      // producing undefined item references.
+      if (maxRows === 0) {
+        this.enterKey = false
+        return
+      }
       let row = this.currentRow ?? 0
       let cell = this.currentCell ?? 0
       if (e.shiftKey) {
