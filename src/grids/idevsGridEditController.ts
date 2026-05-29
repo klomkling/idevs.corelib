@@ -928,6 +928,28 @@ export class IdevsGridEditController<
           }
         }
       }
+      // Round-13 #2 (Copilot): match the Lookup renderer's commit
+      // pattern (round-11 #3) — replace the editor container with
+      // committed text and strip editor classes so the cell isn't
+      // left in an "editing" visual state until a later cleanup
+      // path runs. The Lookup change handler does this; the
+      // ServiceLookup handler didn't.
+      //
+      // For display we prefer the human-readable text (textField
+      // value from the selected source) if it's available;
+      // otherwise fall back to the committed val (the id).
+      // Consumers wanting a different display format can override
+      // via a custom registered renderer.
+      const textField = (editorParams as Record<string, unknown>).textField as
+        | string
+        | undefined
+      const displayValue =
+        addedSource && textField && textField in addedSource
+          ? addedSource[textField]
+          : originalEvent.val
+      target.textContent =
+        displayValue === null || displayValue === undefined ? '' : String(displayValue)
+      this.cleanupCellEditorClasses(target)
       notifyCellChange()
     })
   }

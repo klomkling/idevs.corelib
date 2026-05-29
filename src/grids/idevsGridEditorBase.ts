@@ -848,7 +848,25 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
   private handleKeyDown = (e: KeyboardEvent, _args: ArgsCell | undefined): void => {
     if (e.key !== 'Tab' && e.key !== 'Enter') return
     if (!this.slickGrid.getEditorLock().isActive() || !this.getIsFirstClicked()) {
-      if (this.getIsFirstClicked()) this.moveFocusToNextCell(e.shiftKey)
+      if (this.getIsFirstClicked()) {
+        // Round-13 #1 (Copilot): when we DO handle the key by
+        // advancing SlickGrid's active cell, we must also suppress
+        // the browser's native Tab/Enter so DOM focus doesn't move
+        // out of the grid AFTER our nav already changed the active
+        // cell. The later active-editor branch already does this
+        // (line ~876); without the same suppression here, the
+        // no-editor navigation path leaves DOM focus and active-cell
+        // state out of sync.
+        //
+        // When we do NOT handle the key (the just-return path, no
+        // first-click yet) we intentionally let the native event
+        // through — the user hasn't started editing, so default Tab
+        // focus traversal to whatever comes after the grid is the
+        // expected behavior.
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        this.moveFocusToNextCell(e.shiftKey)
+      }
       return
     }
 

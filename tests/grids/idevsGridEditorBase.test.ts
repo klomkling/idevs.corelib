@@ -892,6 +892,69 @@ describe('IdevsGridEditorBase — handleKeyDown last-cell commit routes through 
   })
 })
 
+describe('IdevsGridEditorBase — handleKeyDown early-return branch preventDefault when handling key (round-13 #1)', () => {
+  // Round-13 #1 (Copilot): the early-return branch in handleKeyDown
+  // had this shape:
+  //
+  //   if (!editorLock.isActive() || !getIsFirstClicked()) {
+  //     if (getIsFirstClicked()) this.moveFocusToNextCell(e.shiftKey)
+  //     return
+  //   }
+  //
+  // When the inner `if (getIsFirstClicked())` was true (no active
+  // editor but user had clicked Add at least once), the code
+  // advanced SlickGrid's active cell via moveFocusToNextCell but
+  // did NOT call preventDefault/stopImmediatePropagation. The
+  // browser's native Tab handling then moved DOM focus out of the
+  // grid AFTER our internal nav had already advanced — desyncing
+  // active-cell state from DOM focus. The later active-editor
+  // branch already calls these (the round-12 #1 commit-first code
+  // path eventually reaches `e.preventDefault()` at L876).
+  //
+  // Fix: call both preventDefault + stopImmediatePropagation when
+  // we DO handle the key. The just-return path (neither condition
+  // met) intentionally lets the native event through.
+  //
+  // Source-text structural test (same constraint as round-9 #1):
+  // handleKeyDown is an arrow class-field unreachable via probe.
+  it('source: moveFocusToNextCell call in the early-return branch is preceded by preventDefault + stopImmediatePropagation', async () => {
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const url = await import('node:url')
+    const here = path.dirname(url.fileURLToPath(import.meta.url))
+    const sourceFile = path.join(here, '..', '..', 'src', 'grids', 'idevsGridEditorBase.ts')
+    const src = await fs.readFile(sourceFile, 'utf-8')
+    const startIdx = src.indexOf('private handleKeyDown =')
+    expect(startIdx).toBeGreaterThan(-1)
+    const remainder = src.slice(startIdx)
+    const nextMemberIdx = remainder.search(/\n {2}(private|protected|public|override)\s/)
+    const body = nextMemberIdx > -1 ? remainder.slice(0, nextMemberIdx) : remainder
+
+    // Find the early-return branch.
+    const earlyReturnIdx = body.indexOf("!this.slickGrid.getEditorLock().isActive()")
+    expect(earlyReturnIdx).toBeGreaterThan(-1)
+    // Slice to the closing brace of the early-return block. The
+    // simplest stable marker is the `return` keyword that terminates
+    // the block.
+    const branchSlice = body.slice(earlyReturnIdx, earlyReturnIdx + 1500)
+    const returnIdx = branchSlice.indexOf('return\n')
+    const earlyBranch = returnIdx > -1 ? branchSlice.slice(0, returnIdx) : branchSlice
+
+    // Locate the three calls.
+    const moveFocusIdx = earlyBranch.search(/this\.moveFocusToNextCell\(/)
+    const preventDefaultIdx = earlyBranch.search(/e\.preventDefault\(\)/)
+    const stopPropIdx = earlyBranch.search(/e\.stopImmediatePropagation\(\)/)
+    expect(moveFocusIdx).toBeGreaterThan(-1)
+    expect(preventDefaultIdx).toBeGreaterThan(-1)
+    expect(stopPropIdx).toBeGreaterThan(-1)
+    // Both suppression calls must precede moveFocusToNextCell so a
+    // future refactor that swaps the order (or drops the calls)
+    // fails the test.
+    expect(preventDefaultIdx).toBeLessThan(moveFocusIdx)
+    expect(stopPropIdx).toBeLessThan(moveFocusIdx)
+  })
+})
+
 describe('IdevsGridEditorBase — handleKeyDown commits BEFORE row-validate (round-12 #1)', () => {
   // Round-12 #1 (Copilot): the prior order in the last-cell branch
   // was `validate(currentItem)` → `tryCommitEditor` → `addButtonClick`.

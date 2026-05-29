@@ -881,6 +881,37 @@ describe('IdevsGridEditController — editor marker + controller-managed toggle-
     expect(body).toMatch(/this\.cleanupCellEditorClasses\(target\)/)
   })
 
+  it('source: renderServiceLookupEditor changeSelect2 callback matches Lookup cleanup pattern (round-13 #2)', async () => {
+    // Round-13 #2 (Copilot): the ServiceLookup commit handler used
+    // to only update item fields + notifyCellChange, leaving the
+    // Select2 container mounted and the `with-editor` class on the
+    // cell. Inconsistent with the Lookup renderer (round-11 #3 fix)
+    // which replaces the container with committed text and strips
+    // editor classes. Round-13 #2 brings ServiceLookup in line.
+    //
+    // Structural assertion: in the renderServiceLookupEditor body,
+    // both `target.textContent = ...` AND
+    // `this.cleanupCellEditorClasses(target)` must appear inside
+    // the changeSelect2 callback.
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const url = await import('node:url')
+    const here = path.dirname(url.fileURLToPath(import.meta.url))
+    const sourceFile = path.join(here, '..', '..', 'src', 'grids', 'idevsGridEditController.ts')
+    const src = await fs.readFile(sourceFile, 'utf-8')
+    const startIdx = src.indexOf('renderServiceLookupEditor:')
+    expect(startIdx).toBeGreaterThan(-1)
+    const remainder = src.slice(startIdx)
+    // Slice to the next renderer (renderStringEditor) to scope.
+    const nextRendererIdx = remainder.indexOf('renderStringEditor')
+    const body = nextRendererIdx > -1 ? remainder.slice(0, nextRendererIdx) : remainder
+    // Anti-regression: the change handler MUST cleanup editor
+    // classes (round-13 #2 fix) AND replace the container with
+    // textContent (so the editor isn't left mounted).
+    expect(body).toMatch(/this\.cleanupCellEditorClasses\(target\)/)
+    expect(body).toMatch(/target\.textContent\s*=/)
+  })
+
   it('toggle-off strips BOTH with-editor AND text-white classes (round-7 #5)', () => {
     // Round 7 #5: prior toggle-off only removed `with-editor`. The
     // Lookup renderer adds BOTH `with-editor` (the controller) AND
