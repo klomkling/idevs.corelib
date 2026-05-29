@@ -6,7 +6,7 @@ import prettierConfig from 'eslint-config-prettier'
 export default [
   // Base ESLint recommended rules
   js.configs.recommended,
-  
+
   // TypeScript files configuration
   {
     files: ['src/**/*.{ts,tsx}'],
@@ -92,32 +92,35 @@ export default [
       // TypeScript enum members, overload params, and ambient declarations
       // correctly (the base rule does not).
       'no-unused-vars': 'off',
-      '@typescript-eslint/no-unused-vars': ['error', {
-        argsIgnorePattern: '^_',
-        varsIgnorePattern: '^_',
-        ignoreRestSiblings: true,
-      }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
+      ],
       '@typescript-eslint/consistent-type-definitions': ['error', 'type'],
       '@typescript-eslint/no-explicit-any': 'warn',
       'prefer-const': 'error',
       'no-var': 'error',
-      'no-console': 'warn',
-      'eqeqeq': ['error', 'always', { null: 'ignore' }],
+      'no-console': ['warn', { allow: ['warn', 'error', 'info'] }],
+      eqeqeq: ['error', 'always', { null: 'ignore' }],
       'no-undef': 'error',
       'no-useless-escape': 'error',
     },
   },
-  
+
   // Prettier configuration (disables conflicting rules)
   prettierConfig,
-  
+
   // Global ignores
   {
     ignores: [
       'dist/',
       'node_modules/',
       '*.js',
-      'eslint.config.js', // Ignore this config file itself
+      'eslint.config.mjs', // Ignore this config file itself
     ],
   },
 ]

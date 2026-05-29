@@ -3,14 +3,15 @@
 ![npm version](https://img.shields.io/npm/v/@idevs/corelib.svg)
 ![license](https://img.shields.io/npm/l/@idevs/corelib.svg)
 
-A comprehensive library of extended components and utilities for the Serenity Framework. This library provides additional editors, formatters, UI components, and helper functions to enhance your Serenity applications.
+A comprehensive library of extended components and utilities for the Serenity Framework. This library provides additional editors, formatters, dialogs, panels, grids, UI components, and helper functions to enhance Serenity applications.
 
 ## Features
 
-- 🎛️ **Extended Editors**: Additional input editors like CheckboxButton and DateMonth
+- 🎛️ **Extended Editors**: Checkbox, date, tag, numeric tag, search-button, and self-search editors
 - 📊 **Custom Formatters**: Specialized data formatters for grids and displays
+- 🧩 **Dialogs, Panels, and Grids**: Serenity building blocks with hardened lifecycle and validation behavior
 - 🎨 **UI Components**: Enhanced toolbar buttons and UI widgets
-- 🛠️ **Utility Functions**: Date, DOM, and formatting utilities
+- 🛠️ **Utility Functions**: Date, DOM, layout, dialog, filter, and formatting utilities
 - 📄 **Export Helpers**: PDF and Excel export functionality
 - 🌐 **TypeScript**: Full TypeScript support with type definitions
 
@@ -25,12 +26,14 @@ npm install @idevs/corelib
 `@idevs/corelib` ships against the following peers, declared in your app's
 `package.json`:
 
-| Package | Range | Required |
-|---|---|---|
-| `@serenity-is/corelib` | `>=8.8.6 <9` | yes |
-| `@serenity-is/sleekgrid` | `>=1.9.6 <2` | yes |
-| `jquery` | `>=3.5` | optional (used by UI helpers) |
-| `jspdf` | `>=3` | optional (used by PDF helpers) |
+| Package                   | Range        | Required                                           |
+| ------------------------- | ------------ | -------------------------------------------------- |
+| `@serenity-is/corelib`    | `>=8.8.6 <9` | yes                                                |
+| `@serenity-is/sleekgrid`  | `>=1.9.6 <2` | yes                                                |
+| `@serenity-is/extensions` | `>=8.7 <11`  | optional (used by selectable/grid-editor subpaths) |
+| `flatpickr`               | `>=4.6 <5`   | optional (used by `IdevsDateEditor`)               |
+| `jquery`                  | `>=3.5`      | optional (used by UI helpers)                      |
+| `jspdf`                   | `>=3`        | optional (used by PDF helpers)                     |
 
 ### Compatibility matrix
 
@@ -39,10 +42,10 @@ companion [Idevs.Net.CoreLib](https://www.nuget.org/packages/Idevs.Net.CoreLib).
 Serenity 9.x is intentionally skipped — pick the lane that matches your
 target framework:
 
-| Lane | `Idevs.Net.CoreLib` | .NET TFM | `Serenity.Net.Services` | `@serenity-is/corelib` | `@idevs/corelib` |
-|---|---|---|---|---|---|
-| **Current** | 0.7.x | `net8.0` | `8.8.9` | `>=8.8.6 <9` | **1.x** |
-| **Future** | 0.8+ (planned) | `net10.0` | `10.x` | `>=10.0.0 <11` | **2.x** (planned) |
+| Lane        | `Idevs.Net.CoreLib` | .NET TFM  | `Serenity.Net.Services` | `@serenity-is/corelib` | `@idevs/corelib`  |
+| ----------- | ------------------- | --------- | ----------------------- | ---------------------- | ----------------- |
+| **Current** | 0.7.x               | `net8.0`  | `8.8.9`                 | `>=8.8.6 <9`           | **1.x**           |
+| **Future**  | 0.8+ (planned)      | `net10.0` | `10.x`                  | `>=10.0.0 <11`         | **2.x** (planned) |
 
 The TS DTOs in `@idevs/corelib/types/export` mirror the .NET `Idevs.Models.*`
 DTOs; see [MIGRATION.md](./MIGRATION.md) for naming changes between versions.
@@ -105,6 +108,25 @@ After installing, update your `tsconfig.json`:
 
 ### Editors
 
+Most editors are available from the root entry or the editors barrel:
+
+```typescript
+import {
+  IdevsTagEditor,
+  IdevsNumericTagEditor,
+  IdevsSearchButtonEditor,
+  IdevsSelfSearchButtonEditor,
+  SlickSearchButtonEditor,
+  SlickSelfSearchButtonEditor,
+} from '@idevs/corelib'
+```
+
+`IdevsDateEditor` is subpath-only because `flatpickr` is optional:
+
+```typescript
+import { IdevsDateEditor } from '@idevs/corelib/editors/idevsDateEditor'
+```
+
 #### CheckboxButtonEditor
 
 A multi-checkbox editor that displays options as button-style checkboxes.
@@ -118,6 +140,28 @@ export class MyForm extends EntityDialog {
     }),
   }
 }
+```
+
+### Dialogs, Panels, and Grids
+
+```typescript
+import {
+  IdevsEntityDialog,
+  IdevsInlineDialog,
+  IdevsPanel,
+  IdevsTabControl,
+  IdevsEntityGrid,
+  IdevsSearchGrid,
+  IdevsGridEditController,
+} from '@idevs/corelib'
+```
+
+The selectable/grid-editor bases depend on Serenity's optional
+`@serenity-is/extensions` package and are exposed through subpaths:
+
+```typescript
+import { IdevsSelectableEntityGrid } from '@idevs/corelib/grids/idevsSelectableEntityGrid'
+import { IdevsGridEditorBase } from '@idevs/corelib/grids/idevsGridEditorBase'
 ```
 
 ### Formatters
@@ -225,6 +269,12 @@ const toolButton = createExportToolButton(exportOptions)
 ## Migration Guide
 
 If you're upgrading from an earlier version:
+
+### Upgrading from 1.1.1 to 1.5.0
+
+Version 1.5.0 adds editors, dialogs, panels, grids, and helpers. Existing 1.1.1
+consumers should review [MIGRATION.md](./MIGRATION.md), especially optional peer
+dependencies, subpath-only imports, and legacy-to-`Idevs*` API renames.
 
 ### Breaking Changes in v1.0.0
 

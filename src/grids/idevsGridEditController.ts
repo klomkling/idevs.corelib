@@ -268,24 +268,24 @@ export class IdevsGridEditController<
     if (this.editable) {
       if (this.autoEdit) {
         this.subscribe(this.grid.slickGrid.onClick as unknown as SlickEventEmitter, (e, args) =>
-          this.loadEditorForCell(args),
+          this.loadEditorForCell(args)
         )
       } else {
         this.subscribe(this.grid.slickGrid.onDblClick as unknown as SlickEventEmitter, (e, args) =>
-          this.loadEditorForCell(args),
+          this.loadEditorForCell(args)
         )
       }
     }
     this.subscribe(
       this.grid.slickGrid.onActiveCellChanged as unknown as SlickEventEmitter,
-      (e, args) => this.handleActiveCellChanged(e, args),
+      (e, args) => this.handleActiveCellChanged(e, args)
     )
     this.subscribe(this.grid.slickGrid.onKeyDown as unknown as SlickEventEmitter, (e, args) =>
-      this.handleKeyDown(e as unknown as KeyboardEvent, args),
+      this.handleKeyDown(e as unknown as KeyboardEvent, args)
     )
     this.subscribe(
       this.grid.slickGrid.onActiveCellPositionChanged as unknown as SlickEventEmitter,
-      (_e, args) => this.handleActiveCellPositionChanged(args),
+      (_e, args) => this.handleActiveCellPositionChanged(args)
     )
   }
 
@@ -330,7 +330,6 @@ export class IdevsGridEditController<
         // which is a real bug worth surfacing — but we still want to drain
         // remaining subscriptions during teardown. Matches the sibling
         // pattern in IdevsGridEditorBase.cleanupEventListeners().
-        // eslint-disable-next-line no-console -- traceability for teardown bugs
         console.warn('[IdevsGridEditController] subscription teardown threw:', error)
       }
     }
@@ -340,7 +339,7 @@ export class IdevsGridEditController<
 
   private subscribe(
     emitter: SlickEventEmitter,
-    handler: (e: IEventData, args: ArgsCell) => unknown,
+    handler: (e: IEventData, args: ArgsCell) => unknown
   ): void {
     emitter.subscribe(handler)
     this.subscriptions.push({ emitter, handler })
@@ -460,14 +459,14 @@ export class IdevsGridEditController<
       this.enterKey = true
       const notifyArgs = { ...args, row, cell }
       ;(this.grid.slickGrid.onActiveCellChanged as unknown as SlickEventEmitter).notify(
-        notifyArgs as ArgsCell,
+        notifyArgs as ArgsCell
       )
       args.row = row
       args.cell = cell
     } catch (err) {
       console.warn(
         '[IdevsGridEditController] handleKeyDown threw — keystroke navigation aborted:',
-        err,
+        err
       )
       this.enterKey = false
     }
@@ -551,7 +550,7 @@ export class IdevsGridEditController<
       // iterating — behavior unchanged — but devs now have a trail.
       console.warn(
         '[IdevsGridEditController] findColumnByDataId: header data-id matches no visible column id or field:',
-        dataId,
+        dataId
       )
     }
     return idx
@@ -582,13 +581,8 @@ export class IdevsGridEditController<
     // Same-cell re-activation (currentRow === args.row && currentCell
     // === args.cell) is NOT a cleanup case — the controller-managed
     // toggle-off in `loadEditor` handles that flow.
-    const isDifferentCell =
-      this.currentRow !== args.row || this.currentCell !== args.cell
-    if (
-      this.currentCell !== null &&
-      this.currentRow !== null &&
-      isDifferentCell
-    ) {
+    const isDifferentCell = this.currentRow !== args.row || this.currentCell !== args.cell
+    if (this.currentCell !== null && this.currentRow !== null && isDifferentCell) {
       const slickCell = this.grid.slickGrid.getCellNode(this.currentRow, this.currentCell)
       if (slickCell) {
         // Marker-based lookup (NOT `firstElementChild + s-*Editor regex`).
@@ -644,7 +638,7 @@ export class IdevsGridEditController<
     } catch (notifyErr) {
       console.warn(
         '[IdevsGridEditController] onCellChange subscriber threw; editor state already committed:',
-        notifyErr,
+        notifyErr
       )
     }
   }
@@ -659,7 +653,7 @@ export class IdevsGridEditController<
   private getCellValue(item: unknown, column: GridColumn): unknown {
     return this.grid.slickGrid.getDataItemValueForColumn(
       item,
-      column as unknown as Parameters<typeof this.grid.slickGrid.getDataItemValueForColumn>[1],
+      column as unknown as Parameters<typeof this.grid.slickGrid.getDataItemValueForColumn>[1]
     )
   }
 
@@ -692,11 +686,10 @@ export class IdevsGridEditController<
     // assertion.
     if (!hasField(column)) {
       // Misconfiguration signal: an editable column with no `field` is
-      // unusable. Log under the project's project-wide `no-console: warn`
-      // policy so consumers can find the offending column descriptor.
+      // unusable. Warn so consumers can find the offending column descriptor.
       console.warn(
         '[IdevsGridEditController] Column has editorType but no field; ignoring edit',
-        column,
+        column
       )
       return
     }
@@ -812,9 +805,7 @@ export class IdevsGridEditController<
     const children = target.children
     for (let i = 0; i < children.length; i++) {
       const child = children[i] as HTMLElement
-      if (
-        child.getAttribute(IdevsGridEditController.EDITOR_MARKER_ATTR) === 'true'
-      ) {
+      if (child.getAttribute(IdevsGridEditController.EDITOR_MARKER_ATTR) === 'true') {
         return child
       }
     }
@@ -919,7 +910,7 @@ export class IdevsGridEditController<
       // through `IdevsGridEditControllerOptions`.
       const formattedValue = (Number.isFinite(numericValue) ? numericValue : 0).toLocaleString(
         'en-US',
-        { minimumFractionDigits: 2, maximumFractionDigits: 2 },
+        { minimumFractionDigits: 2, maximumFractionDigits: 2 }
       )
       // XSS hardening: textContent (source used innerHTML, fine for
       // numeric output but consistent with the rest of the editors).
@@ -949,9 +940,7 @@ export class IdevsGridEditController<
     // No `isReadonlyCell(args.cell)` either — loadEditor filters
     // readOnly columns via `column.sourceItem.readOnly` BEFORE dispatch.
     const toggleTarget =
-      target.tagName.toLowerCase() === 'span'
-        ? target
-        : target.querySelector<HTMLElement>('span')
+      target.tagName.toLowerCase() === 'span' ? target : target.querySelector<HTMLElement>('span')
     if (!toggleTarget) return
     toggleTarget.classList.toggle('checked')
     item[column.field] = toggleTarget.classList.contains('checked')
@@ -972,9 +961,11 @@ export class IdevsGridEditController<
       this.appendEditorChild(target, container)
       target.classList.add('text-white')
     }
-    ;(lookupEditor as unknown as {
-      changeSelect2: (handler: (e: Select2Event) => void) => void
-    }).changeSelect2(e => {
+    ;(
+      lookupEditor as unknown as {
+        changeSelect2: (handler: (e: Select2Event) => void) => void
+      }
+    ).changeSelect2(e => {
       const val = e.originalEvent.val
       item[column.field] = val
       // Round-11 #3 (Copilot): when the Select2 commit replaces the
@@ -1009,9 +1000,11 @@ export class IdevsGridEditController<
     if (container) {
       this.appendEditorChild(target, container)
     }
-    ;(serviceLookupEditor as unknown as {
-      changeSelect2: (handler: (e: Select2Event) => void) => void
-    }).changeSelect2(e => {
+    ;(
+      serviceLookupEditor as unknown as {
+        changeSelect2: (handler: (e: Select2Event) => void) => void
+      }
+    ).changeSelect2(e => {
       const originalEvent = e.originalEvent
       const addedSource = originalEvent.added?.source
       item[column.field] = originalEvent.val
@@ -1036,9 +1029,7 @@ export class IdevsGridEditController<
       // otherwise fall back to the committed val (the id).
       // Consumers wanting a different display format can override
       // via a custom registered renderer.
-      const textField = (editorParams as Record<string, unknown>).textField as
-        | string
-        | undefined
+      const textField = (editorParams as Record<string, unknown>).textField as string | undefined
       const displayValue =
         addedSource && textField && textField in addedSource
           ? addedSource[textField]
