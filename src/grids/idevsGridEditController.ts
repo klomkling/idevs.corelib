@@ -477,17 +477,16 @@ export class IdevsGridEditController<
     const headers = this.grid.slickGrid.getHeader().children
     for (let i = cell + 1; i < headers.length; i++) {
       const header = headers[i] as HTMLElement
-      const field = header.getAttribute('data-id')
+      const dataId = header.getAttribute('data-id')
       // Skip headers without a `data-id` (selection-checkbox column,
       // row-reorder handle, action columns). Without this guard,
-      // `findIndex(... column.field === null ...)` would never match
-      // (so the iteration continued), BUT multiple no-field columns in
-      // visibleColumns could still collide by both having undefined
-      // `field` — `findIndex` would return the first match and
-      // `isReadonlyCell(idx)` would read the WRONG column's readOnly
-      // state.
-      if (!field) continue
-      const idx = this.visibleColumns.findIndex(column => column.field === field)
+      // `findIndex(... === null ...)` would never match (iteration
+      // continues), BUT multiple no-data-id columns in visibleColumns
+      // could still collide by both having undefined id/field —
+      // findIndex would return the first match and isReadonlyCell
+      // would read the WRONG column's readOnly state.
+      if (!dataId) continue
+      const idx = this.findColumnByDataId(dataId)
       if (idx >= 0 && !this.isReadonlyCell(idx)) {
         return i
       }
@@ -499,10 +498,10 @@ export class IdevsGridEditController<
     const headers = this.grid.slickGrid.getHeader().children
     for (let i = cell - 1; i >= 0; i--) {
       const header = headers[i] as HTMLElement
-      const field = header.getAttribute('data-id')
-      // See nextCell for the null-field skip rationale.
-      if (!field) continue
-      const idx = this.visibleColumns.findIndex(column => column.field === field)
+      const dataId = header.getAttribute('data-id')
+      // See nextCell for the null-data-id skip rationale.
+      if (!dataId) continue
+      const idx = this.findColumnByDataId(dataId)
       if (idx >= 0 && !this.isReadonlyCell(idx)) {
         return i
       }
@@ -513,6 +512,33 @@ export class IdevsGridEditController<
   private isReadonlyCell(idx: number): boolean {
     const column = this.visibleColumns[idx] as GridColumn | undefined
     return !!column?.sourceItem?.readOnly
+  }
+
+  /**
+   * Look up a visible column index by the header's `data-id` attribute.
+   *
+   * Round-17 #4 (Copilot): SlickGrid headers store `column.id` in
+   * `data-id`, NOT `column.field`. The prior code compared `data-id`
+   * to `column.field` — which works for the common Serenity case
+   * where `id === field`, but FAILS when they diverge (custom column
+   * factories may set `id` differently for compatibility/aliasing
+   * reasons). Tab/Enter would skip such columns, or conclude that no
+   * editable cell exists, in valid grid configurations.
+   *
+   * Fix: prefer matching `column.id`; fall back to `column.field` for
+   * back-compat with columns that don't set `id` explicitly (Serenity
+   * defaults `id` to `field` in that case anyway, but the explicit
+   * `id?: string` shape now reflects what SlickGrid does at the DOM
+   * boundary).
+   */
+  private findColumnByDataId(dataId: string): number {
+    // First pass: exact id match.
+    let idx = this.visibleColumns.findIndex(column => column.id === dataId)
+    if (idx >= 0) return idx
+    // Fallback: field match (back-compat for columns without an
+    // explicit `id`).
+    idx = this.visibleColumns.findIndex(column => column.field === dataId)
+    return idx
   }
 
   private firstEditableCell(): number {

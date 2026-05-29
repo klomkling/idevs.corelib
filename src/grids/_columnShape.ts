@@ -64,6 +64,12 @@ export type GridColumnSourceItem = {
  * adding a field here means every consumer of the alias inherits it.
  */
 export type GridColumn = {
+  /** SlickGrid's canonical column identifier. SlickGrid headers store
+   * this in `data-id`, NOT the column's `field`. In many setups
+   * `id === field`, but they CAN diverge — Serenity column factories
+   * may set `id` to something other than `field` for compatibility
+   * reasons. Header → column lookups must compare against `id`. */
+  id?: string
   field?: string
   name?: string
   visible?: boolean

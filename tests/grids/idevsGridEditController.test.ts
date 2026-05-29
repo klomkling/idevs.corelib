@@ -48,8 +48,13 @@ function makeEmitter(): SlickEmitterRecord & {
 }
 
 type FakeColumn = {
+  /** SlickGrid canonical column id (written into `data-id` on the
+   * header). Optional — falls back to `field` per the helper's
+   * `dataId = col.id ?? col.field` rule. */
+  id?: string
   field?: string
   visible?: boolean
+  cssClass?: string
   sourceItem?: { readOnly?: boolean; editorType?: string; editorParams?: Record<string, unknown> }
 }
 
@@ -75,7 +80,14 @@ function makeFakeGrid(opts: {
   const header = document.createElement('div')
   columns.forEach(col => {
     const el = document.createElement('div')
-    if (col.field) el.setAttribute('data-id', col.field)
+    // Round-17 #4: SlickGrid headers store `column.id` in `data-id`,
+    // NOT `column.field`. The makeFakeGrid helper now matches that
+    // convention: prefer `col.id`, fall back to `col.field` for
+    // tests that don't set id explicitly (back-compat for older
+    // tests that pre-date the round-17 #4 fix).
+    const dataId =
+      (col as { id?: string }).id ?? (col as { field?: string }).field
+    if (dataId) el.setAttribute('data-id', dataId)
     header.appendChild(el)
   })
 
@@ -1074,6 +1086,91 @@ describe('IdevsGridEditController — refreshColumnSnapshot behavior (PR-4b roun
     // about exact later positions — just that the snapshot is taken
     // before any subscription wiring.)
     expect(callOrder.indexOf('getColumns')).toBeLessThan(callOrder.indexOf('subscribe'))
+  })
+})
+
+describe('IdevsGridEditController — header data-id matches column.id, not column.field (round-17 #4 [P2] Copilot)', () => {
+  // Round-17 #4 [P2] (Copilot): SlickGrid headers store `column.id`
+  // in `data-id`, NOT `column.field`. The prior code compared
+  // `data-id` to `column.field` — which works for the common
+  // case where `id === field` but FAILS when they diverge.
+  // Tab/Enter would skip the editable column or conclude no editable
+  // cell exists in that valid configuration.
+  //
+  // Fix: prefer `column.id` match; fall back to `column.field` for
+  // back-compat.
+  it('nextCell finds an editable column when header data-id matches column.id (NOT column.field)', () => {
+    const { grid } = makeFakeGrid({
+      editable: true,
+      columns: [
+        // Column with diverging id/field — id='alpha', field='name'.
+        // Header gets data-id='alpha'. The prior code would compare
+        // 'alpha' to column.field ('name') → no match → Tab skips.
+        { id: 'alpha', field: 'name', visible: true, sourceItem: {} },
+      ],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const nextCell = (controller as unknown as { nextCell(i: number): number }).nextCell
+    expect(nextCell.call(controller, -1)).toBe(0)
+  })
+
+  it('previousCell finds an editable column via column.id match (round-17 #4 inverse)', () => {
+    const { grid } = makeFakeGrid({
+      editable: true,
+      columns: [
+        { id: 'alpha', field: 'name', visible: true, sourceItem: {} },
+        { id: 'beta', field: 'value', visible: true, sourceItem: {} },
+      ],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const previousCell = (controller as unknown as { previousCell(i: number): number })
+      .previousCell
+    expect(previousCell.call(controller, 2)).toBe(1)
+    expect(previousCell.call(controller, 1)).toBe(0)
+  })
+
+  it('fallback: matches by column.field when column.id is unset (back-compat)', () => {
+    // No `id` on the column — falls back to `field` matching, which
+    // is the pre-round-17 behavior (and the common Serenity case).
+    const { grid } = makeFakeGrid({
+      editable: true,
+      columns: [
+        { field: 'plain', visible: true, sourceItem: {} },
+      ],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const nextCell = (controller as unknown as { nextCell(i: number): number }).nextCell
+    expect(nextCell.call(controller, -1)).toBe(0)
+  })
+
+  it('findColumnByDataId helper prefers id over field when both could match', () => {
+    // Build a column set where one column's `id` and a DIFFERENT
+    // column's `field` collide on the same string. The helper must
+    // pick the column whose `id` matches (correct per SlickGrid).
+    const { grid } = makeFakeGrid({
+      editable: true,
+      columns: [
+        { id: 'misc', field: 'specific', visible: true, sourceItem: {} },
+        // This column's `field` matches the FIRST column's `id`.
+        { field: 'misc', visible: true, sourceItem: {} },
+      ],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const findByDataId = (controller as unknown as {
+      findColumnByDataId(s: string): number
+    }).findColumnByDataId
+    // `data-id='misc'` should match the FIRST column (id='misc'),
+    // not the second (field='misc'). The helper's first pass is the
+    // id match.
+    expect(findByDataId.call(controller, 'misc')).toBe(0)
   })
 })
 

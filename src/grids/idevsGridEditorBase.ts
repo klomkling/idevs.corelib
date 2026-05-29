@@ -549,9 +549,29 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
         args?.row !== undefined &&
         activeCell.row !== args.row
       ) {
+        // Round-17 #1 [P1] (Copilot): commit the active editor BEFORE
+        // moving to another cell. `startEditing` below calls
+        // `setActiveCell`, which tears down the current editor
+        // without committing it — the in-flight value would be lost.
+        // Route through `tryCommitEditor` so commit failures (validation
+        // rejection or throw) ALSO halt the row navigation.
+        if (!this.tryCommitEditor()) {
+          // Round-17 #3 (Copilot): when we block the click here,
+          // SlickGrid never changes the active cell so
+          // onActiveCellChanged DOES NOT fire. Setting
+          // `_lastValidationFailed = true` would persist
+          // indefinitely and incorrectly suppress the NEXT row-
+          // change notify + advance. Do NOT set the flag in
+          // blocked-click paths.
+          e?.stopImmediatePropagation?.()
+          e?.preventDefault?.()
+          return false
+        }
         const currentItem = this.slickGrid.getDataItem(activeCell.row) as TEntity
         if (!this.validate(currentItem, activeCell.row)) {
-          this._lastValidationFailed = true
+          // Same round-17 #3 reasoning: blocking the click prevents
+          // onActiveCellChanged from firing, so the flag would
+          // never be consumed. Do NOT set it here.
           e?.stopImmediatePropagation?.()
           e?.preventDefault?.()
           return false
@@ -604,6 +624,15 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
 
     const activeCell = this.slickGrid.getActiveCell()
     if (activeCell) {
+      // Round-17 #2 [P1] (Copilot): commit the active editor BEFORE
+      // validating the row OR moving focus to the new row.
+      // `setActiveCell(row, ...)` further below tears down the active
+      // editor without committing it — the in-flight value would be
+      // lost, AND the validate() call below would run against the
+      // pre-commit (stale) row state. Same pattern as round-12 #1's
+      // ordering fix for handleKeyDown's last-cell branch: commit
+      // first, then validate post-commit state, then proceed.
+      if (!this.tryCommitEditor()) return
       const currentItem = this.slickGrid.getDataItem(activeCell.row) as TEntity
       if (!this.validate(currentItem, activeCell.row)) return
     }

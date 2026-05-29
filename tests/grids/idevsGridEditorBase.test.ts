@@ -1082,6 +1082,138 @@ describe('IdevsGridEditorBase — lastEditableCellIndex uses isCellEditable pred
   })
 })
 
+describe('IdevsGridEditorBase — click handler commits active editor BEFORE startEditing (round-17 #1 [P1] Copilot)', () => {
+  // Round-17 #1 [P1] (Copilot): when user clicks another cell while
+  // an editor is active, the click handler called `startEditing`
+  // which tears down the current editor via `setActiveCell` WITHOUT
+  // committing it. The in-flight value was discarded.
+  //
+  // Source-text structural assertion (click handler is an inline
+  // arrow in setupGridEventHandlers, not probe-reachable).
+  it('source: click handler calls tryCommitEditor BEFORE startEditing in the row-change branch', async () => {
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const url = await import('node:url')
+    const here = path.dirname(url.fileURLToPath(import.meta.url))
+    const sourceFile = path.join(here, '..', '..', 'src', 'grids', 'idevsGridEditorBase.ts')
+    const src = await fs.readFile(sourceFile, 'utf-8')
+    const startEditingIdx = src.indexOf('this.startEditing(args.row, args.cell)')
+    expect(startEditingIdx).toBeGreaterThan(-1)
+    const before = src.slice(0, startEditingIdx)
+    const handlerStart = before.lastIndexOf('clickEventName')
+    expect(handlerStart).toBeGreaterThan(-1)
+    const handlerBody = src.slice(handlerStart, startEditingIdx + 200)
+    const tryCommitIdx = handlerBody.search(/this\.tryCommitEditor\(\)/)
+    const startEditingRelIdx = handlerBody.indexOf('this.startEditing(args.row, args.cell)')
+    expect(tryCommitIdx).toBeGreaterThan(-1)
+    expect(tryCommitIdx).toBeLessThan(startEditingRelIdx)
+  })
+
+  it('source: click handler does NOT set _lastValidationFailed when blocking the click (round-17 #3 [P2])', async () => {
+    // Round-17 #3 [P2] (Copilot): blocking the click prevents
+    // onActiveCellChanged from firing, so the flag setting would
+    // persist indefinitely and incorrectly suppress the next
+    // successful row-change notify + advance.
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const url = await import('node:url')
+    const here = path.dirname(url.fileURLToPath(import.meta.url))
+    const sourceFile = path.join(here, '..', '..', 'src', 'grids', 'idevsGridEditorBase.ts')
+    const src = await fs.readFile(sourceFile, 'utf-8')
+    const clickEventNameIdx = src.indexOf('const clickEventName')
+    expect(clickEventNameIdx).toBeGreaterThan(-1)
+    const afterClick = src.slice(clickEventNameIdx)
+    const nextHandlerIdx = afterClick.indexOf('// Tab / Enter navigation')
+    const clickHandlerBody =
+      nextHandlerIdx > -1 ? afterClick.slice(0, nextHandlerIdx) : afterClick
+    // The click handler block-paths (validate-fail / commit-fail)
+    // must NOT set the flag. (The onBeforeEditCell handler still
+    // sets it — different handler, different SlickGrid event
+    // ordering.)
+    expect(clickHandlerBody).not.toMatch(/this\._lastValidationFailed\s*=\s*true/)
+  })
+})
+
+describe('IdevsGridEditorBase — addButtonClick commits active editor BEFORE validate+addRow (round-17 #2 [P1] Copilot)', () => {
+  // Round-17 #2 [P1] (Copilot): clicking Add while an editor is
+  // active validated the row BEFORE the editor commit. Then
+  // setActiveCell moved focus to the new row and destroyed the
+  // active editor — discarding the user's current edit AND
+  // validating against stale row data.
+  it('does NOT add a row when tryCommitEditor returns false', () => {
+    const items: Record<string, unknown>[] = [{ a: 1 }]
+    const probe = makeProbe({
+      columns: [{ editor: () => undefined, field: 'a', visible: true, sourceItem: {} }],
+      items,
+    })
+    probe.slickGrid.getActiveCell = vi.fn(() => ({ row: 0, cell: 0 }))
+    probe.slickGrid.getEditorLock = vi.fn(() => ({
+      isActive: () => true,
+      commitCurrentEdit: vi.fn(() => false),
+      cancelCurrentEdit: vi.fn(),
+    }))
+    const addItemSpy = probe.view.addItem as ReturnType<typeof vi.fn>
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      probe.addButtonClick()
+      expect(addItemSpy).not.toHaveBeenCalled()
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it('does NOT add a row when tryCommitEditor throws', () => {
+    const items: Record<string, unknown>[] = [{ a: 1 }]
+    const probe = makeProbe({
+      columns: [{ editor: () => undefined, field: 'a', visible: true, sourceItem: {} }],
+      items,
+    })
+    probe.slickGrid.getActiveCell = vi.fn(() => ({ row: 0, cell: 0 }))
+    const cancelMock = vi.fn()
+    probe.slickGrid.getEditorLock = vi.fn(() => ({
+      isActive: () => true,
+      commitCurrentEdit: vi.fn(() => {
+        throw new Error('editor crashed')
+      }),
+      cancelCurrentEdit: cancelMock,
+    }))
+    const addItemSpy = probe.view.addItem as ReturnType<typeof vi.fn>
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(() => probe.addButtonClick()).not.toThrow()
+      expect(cancelMock).toHaveBeenCalled()
+      expect(addItemSpy).not.toHaveBeenCalled()
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it('DOES add a row when tryCommitEditor succeeds (sanity)', () => {
+    const items: Record<string, unknown>[] = [{ a: 1 }]
+    const probe = makeProbe({
+      columns: [{ editor: () => undefined, field: 'a', visible: true, sourceItem: {} }],
+      items,
+    })
+    probe.slickGrid.getActiveCell = vi.fn(() => ({ row: 0, cell: 0 }))
+    probe.slickGrid.getEditorLock = vi.fn(() => ({
+      isActive: () => true,
+      commitCurrentEdit: vi.fn(() => true),
+      cancelCurrentEdit: vi.fn(),
+    }))
+    const addItemSpy = probe.view.addItem as ReturnType<typeof vi.fn>
+    const proto = Object.getPrototypeOf(probe) as { validate?: () => boolean }
+    const originalValidate = proto.validate
+    proto.validate = () => true
+    try {
+      probe.addButtonClick()
+      expect(addItemSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      if (originalValidate) proto.validate = originalValidate
+      else delete proto.validate
+    }
+  })
+})
+
 describe('IdevsGridEditorBase — onBeforeEditCell honors tryCommitEditor result (round-10 #1)', () => {
   // Round-10 #1 (Copilot): the onBeforeEditCell handler called
   // tryCommitEditor() but ignored its return value, falling through
