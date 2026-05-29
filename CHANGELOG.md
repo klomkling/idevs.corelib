@@ -7,47 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-> Tracks work landed on `main` after `v1.1.1` that has not yet been tagged. The unreleased grid-extensions work (batches 2–4b) is described in `MIGRATION.md` under `1.4.x → 1.5.0`; the entry below covers only the most recent hardening round on top of that work.
+## [1.5.0] - 2026-05-30
 
-### PR-4b grid extensions — round-19 hardening (12 findings)
+> Covers work landed on `main` after `v1.1.1`: editor, dialog, panel, grid,
+> helper, and hardening work for the 1.5.0 release.
 
-Multi-agent review (`pr-review-toolkit`) of the merged batch-4b grid extensions identified 3 Critical, 6 Important, and 3 Suggestion-level findings. All 12 addressed in commit `ed55acc`. Public-facing changes consumers should know about:
+### Added
 
-#### Changed
+- **Editor additions**:
+  - `IdevsTagEditor` with combobox/listbox ARIA, casing support, required-state validation, read-only support, keyboard navigation, and idempotent cleanup.
+  - `IdevsDateEditor` at `@idevs/corelib/editors/idevsDateEditor`, with `flatpickr` as an optional peer, ISO-value normalization, user-format display, modal placement handling, validation-class sync, and read-only handling.
+  - `IdevsNumericTagEditor`, `IdevsSearchButtonEditor`, `IdevsSelfSearchButtonEditor`, `SlickEditorBase`, `SlickSearchButtonEditor`, and `SlickSelfSearchButtonEditor`.
+  - Internal editor helpers for masked patterns, required markers, validation mirroring, and self-search result rendering.
+- **Dialog and panel additions**:
+  - `IdevsPropertyDialog`, `IdevsEntityDialog`, `IdevsInlineDialog`, `IdevsSearchDialog`.
+  - `IdevsPage`, `IdevsPanel`, `IdevsOffcanvasPanel`, `IdevsTabControl`.
+- **Grid additions**:
+  - Root exports: `IdevsEntityGrid`, `IdevsSearchGrid`, `IdevsGridEditController`.
+  - Optional-subpath exports: `IdevsSelectableEntityGrid` and `IdevsGridEditorBase`.
+  - Custom cell-editor registry via `IdevsGridEditController.registerCellEditor(...)`.
+- **Helper ports**:
+  - `layoutHelper`, `filterHelper`, and plural `dialogHelpers` modules.
+  - Root helper exports extended with layout/dialog/filter helpers; async layout `getElementHeight` is exported as `waitForElementHeight` to avoid a name clash.
+- **Optional peer dependency coverage**:
+  - `flatpickr` for `IdevsDateEditor`.
+  - `@serenity-is/extensions` for selectable/grid-editor subpath grids.
+- **Test coverage and docs**:
+  - New Vitest suites for editors, self-search controllers, dialogs, panels, helpers, grids, grid-controller type assertions, and regression scenarios.
+  - Design/spec and review documents for the 1.5.0 component work.
 
-- **`IdevsGridEditorBase.deleteCurrentRow` no longer rethrows on repaint failure.** If `slickGrid.invalidate()` / `updateRowCount()` / `render()` throws after `view.deleteItem` already succeeded, the row stays in `_deletedRows` (data-layer delete already happened), the method logs + calls `notifyError('The row was deleted but the grid display could not be refreshed. …')`, and returns cleanly. Subclasses that previously wrapped the call in `try/catch` can drop that.
-- **Click handler now commits the active editor on same-row cell-to-cell clicks too** (round-18 #1 follow-up). Previously round-17 only gated the commit by `row !== args.row` — editing row 0 cell 1 and clicking row 0 cell 2 still hit the data-loss path. Widened to `row OR cell change`; row-level `validate()` stays row-only.
-- **`addButtonClick` commit → validate → addItem ordering** is now covered by behavioral tests (round-19 #7), preventing future re-introduction of the round-17 #2 stale-row validation bug.
+### Changed
 
-#### Added
+- The public root barrel now exports `editors`, `dialogs`, `grids`, `panels`, expanded `helpers`, `utils`, and `types`.
+- Legacy PascalCase assignment APIs were converted to camelCase methods where applicable, with compatibility shims retained on the dialog/search/grid surfaces documented in `MIGRATION.md`.
+- `IdevsDateEditor` is intentionally not re-exported from the `editors` barrel so consumers that do not use dates are not forced to resolve `flatpickr`.
+- `IdevsPanel` no longer assumes a legacy date editor format; consumers using `IdevsDateEditor` should pass `format: 'd/m/Y'` explicitly when they need that display format.
+- `IdevsGridEditController` identifies mounted custom editors by a controller-owned marker attribute instead of class-name regex matching. Custom renderers must use the provided `appendEditorChild(child)` callback.
+- `IdevsGridEditController` header navigation matches `column.id` first, then `column.field`, and logs a warning when header `data-id` matches no visible column.
+- `IdevsGridEditController.notifyCellChange` now catches and logs throwing host subscribers after the editor state has already been committed.
+- `IdevsGridEditorBase.deleteCurrentRow` no longer rethrows if grid repaint fails after the data-layer delete has succeeded; it records the deleted row, logs, and notifies the user.
+- `IdevsGridEditorBase` cell-click handling now commits active edits before any same-row or different-row cell navigation. Failed commits block navigation.
+- `IdevsGridEditorBase.addButtonClick` preserves commit -> row-validate -> addItem ordering.
+- `IdevsSearchGrid.handleEditItemError` is now invoked through a safe wrapper that downgrades throwing overrides to logged warnings.
+- `package.json` now includes subpath exports for optional date/grid modules and peer metadata for optional peers.
+- `eslint.config.mjs` and test TypeScript config were extended for the larger source and test surface.
+- `package-lock.json` now scopes the `glob` override to `@serenity-is/tsbuild` for CVE-2025-64756.
 
-- **`IdevsGridEditController.findColumnByDataId` warn-on-miss telemetry.** When a header's `data-id` matches no column's `id` OR `field`, the controller now logs `[IdevsGridEditController] findColumnByDataId: header data-id matches no visible column id or field: <dataId>`. Navigation behavior unchanged (returns `-1`, caller continues iterating). Helps diagnose column-config drift that previously silently turned cells into non-editable.
-- **`IdevsGridEditController.notifyCellChange` try/catch around the host notify.** A throwing `onCellChange` subscriber on the host grid no longer rips up through the editor's `change` handler. Logged as `[IdevsGridEditController] onCellChange subscriber threw; editor state already committed:` — editor state stays consistent because textContent / cleanup writes already ran before notify.
-- **`isDefinedCellTarget` internal type guard** in `idevsGridEditorBase.ts` replaces a fragile `args!` non-null assertion in the click handler with a compiler-enforced narrowed `clickTarget` local.
+### Fixed
 
-#### Fixed
+- XSS risks in new editor, dialog, panel, grid, and validation-message rendering paths by using DOM APIs and `textContent` instead of raw markup writes.
+- Data-loss paths in grid editing where navigation could tear down an active editor before commit or validate stale row state before adding a row.
+- Lifecycle leaks from unremoved window/document/SlickGrid listeners, mutation observers, self-search modal/dropdown listeners, and grid-editor subscriber arrays.
+- Read-only, focus, validation, and modal-placement edge cases in date, tag, search-button, self-search, dialog, and grid controls.
+- SlickGrid editor cleanup drift, including stale editor marker/classes during toggle-off, row changes, and cell changes.
+- Null-guard and private-field access issues across dialogs, panels, search grids, grid editors, and helper code.
+- Async correctness issues in dialog close handling, search dialog opening, self-search focus timers, and grid edit error handling.
 
-- **`IdevsGridEditController` editor classes** — Integer / Decimal / String editor change handlers now have inline cross-reference comments pointing at the shared `cleanupCellEditorClasses` helper to prevent future drift (the Lookup `text-white` leak fixed in round-11 #3 originated from this kind of drift).
-- **`tryCommitEditor` failure path documentation** clarified: on `commitCurrentEdit() === false` the SlickGrid contract is that the editor's own `validate()` rendered the user-visible message; the controller intentionally does not add a second `notifyError` toast. Telemetry-only `console.warn` retained.
+### Removed
 
-#### Tests
+- Application-domain modules and types were intentionally not included: `ShippingMark*` modules and approval/report parameter types that reference application-specific server rows.
+- The application-specific `CustomerProductPriceEditor` special case was removed from grid editor dispatch; consumers should register app-specific editors through `registerCellEditor(...)`.
+- Layout helper prototype extensions were not carried forward; affected helpers are plain exported functions.
+- Raw CSS-string style variants were removed from `IdevsInlineDialog.IdevsCustomButton.style` and `IdevsInlineDialog.IdevsEmptyField.style`; use `Partial<CSSStyleDeclaration>`.
+- Internal self-search/helper modules are not part of the public barrel and should not be imported by consumers.
 
-- **+9 net new tests**, total now 556 + 1 skipped (was 547 + 1 skipped at end of round-18).
-- Replaced brittle "no `||` between if and validate" structural style-pin test with **5 behavioral runtime tests** exercising the captured click handler through `setupGridEventHandlers` (different-row click, same-row different-cell click, same-cell no-op, failing-commit blocks navigation, no-flag-on-block).
-- Added bidirectional `findColumnByDataId` collision tests (id-first regardless of column order) + warn-on-miss + no-warn-on-match.
-- Added strict-TS compile-only assertions for the `id?: string` field on `GridColumn` introduced in round-17 #4.
-- Added 2 behavioral ordering tests for `addButtonClick`: commit → validate → addItem on success; commit → validate (no addItem) on validate-fail.
+### Migration
 
-#### Migration
-
-- See `MIGRATION.md` under `### Post-review hardening (PR-4b rounds 6-19)` for the full consumer-facing contract list, including the marker-based editor identification contract for custom `registerCellEditor(...)` renderers.
+- See `MIGRATION.md` for the full migration path since `v1.1.1`, including:
+  - `1.1.1 -> 1.5.0` overview.
+  - `1.1.x -> 1.2.0` editor/search-button changes.
+  - `1.2.x -> 1.3.0` self-search changes.
+  - `1.3.x -> 1.4.0` dialog/panel/helper changes.
+  - `1.4.x -> 1.5.0` grid changes and PR-4b hardening contracts.
 
 ---
 
 ## [1.1.1] - 2026-05-24
 
 ### Added
-- **Csi/UI port — batch 1/4** (primitives from PowerACC):
+
+- **Component primitives**:
   - `helpers/windowHelper.ts` — `isSmallDevice()` responsive media-query check.
   - `helpers/processQueryButtons.ts` — `addProcessQueryButtons()` factory for paired Query/Clear toolbar buttons.
   - `types/gridEditableMode.ts` — `GridEditableMode` discriminated union (`Full` / `Off` / `Some`).
@@ -57,6 +96,7 @@ Multi-agent review (`pr-review-toolkit`) of the merged batch-4b grid extensions 
 ## [1.1.0] - 2026-05-23
 
 ### Added
+
 - **Vitest test harness** with jsdom environment; unit tests for `utils/format`, `utils/dom`, `globals` date proxy helpers, `DropdownToolButton`, and `pdfExportHelper`.
 - **GitHub Actions CI** (`.github/workflows/ci.yml`) running typecheck, lint, test, and build on PRs and pushes to `main`.
 - **`@idevs/corelib/globals` subpath export** for opt-in prototype patches. Prepares for the 2.0.0 removal of the implicit side-effect import from the root entry.
@@ -65,12 +105,14 @@ Multi-agent review (`pr-review-toolkit`) of the merged batch-4b grid extensions 
 - **`MIGRATION.md`** with the deprecation guide and the 2.0.0 outlook.
 
 ### Changed
+
 - `doExportPdf` and `doExportExcel` now return `Promise<void>` and surface server errors. Existing callers continue to work but should `await` (or `.catch`) to capture failures.
 - `prepublishOnly` now gates publish behind typecheck, lint, and tests.
 - `@serenity-is/corelib` and `@serenity-is/sleekgrid` are now `peerDependencies` (range `>=8.8.6 <9` / `>=1.9.6 <2`) instead of regular `dependencies`. `jquery` and `jspdf` are declared as optional peers.
 - TypeScript `strictNullChecks` is now enabled. The rest of the strict-family flags remain off pending further migration.
 
 ### Fixed
+
 - **XSS** in `DropdownToolButton.addSideButtonItem` — replaced HTML template interpolation with DOM-API construction (`buildSideButtonElement`), with invalid CSS-class tokens dropped as defense-in-depth.
 - **XSS** in `pdfExportHelper.showFluentPdfPreview` — dialog title now uses `textContent` via the new `__buildPreviewDialog` helper. Bonus: the close-button glyph also moved from `innerHTML` to `textContent`.
 - **Filename injection** in `doExportPdf` download — `options.reportName` is sanitized before use as `<a download>` via the new `__sanitizeDownloadName` helper.
@@ -81,10 +123,12 @@ Multi-agent review (`pr-review-toolkit`) of the merged batch-4b grid extensions 
 - Stale `toastr` entry removed from `tsconfig.types` (the `@types/toastr` package wasn't installed and broke `tsc --noEmit`).
 
 ### Deprecated
+
 - `IdevsContentResponse.FileName` — use `DownloadName` (matches the server DTO). Removal in 2.0.0.
 - Implicit `import './globals'` in the root entry — opt in via `import '@idevs/corelib/globals'` instead. Removal in 2.0.0.
 
 ### Compatibility
+
 - **No breaking changes.** Consumers on `^1.0.5` upgrade by running `npm update @idevs/corelib`.
 - A future 2.0.0 will remove the deprecated paths and align wire DTO casing with the .NET DTO (`viewName` → `ViewName`, etc.). See `MIGRATION.md`.
 

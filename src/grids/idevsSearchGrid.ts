@@ -393,7 +393,7 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
       // diagnostics. Consumers wanting a user-visible signal can
       // override `editItem` directly.
       console.info(
-        `[IdevsSearchGrid] editItem(${String(entityOrId)}) denied: permission '${this._editPermission}' not granted`,
+        `[IdevsSearchGrid] editItem(${String(entityOrId)}) denied: permission '${this._editPermission}' not granted`
       )
       return
     }
@@ -431,7 +431,7 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
         // handler to the same microtask hop, ensuring no transient
         // unhandled-rejection event fires for chunk-load / dynamic-import
         // failures on a code-split dialog module.
-        err => this.safeHandleEditItemError(err, entityOrId, 'dialog-load'),
+        err => this.safeHandleEditItemError(err, entityOrId, 'dialog-load')
       )
       return
     }
@@ -451,7 +451,7 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
   private safeHandleEditItemError(
     err: unknown,
     entityOrId: string | number,
-    phase: 'dialog-load' | 'dialog-open',
+    phase: 'dialog-load' | 'dialog-open'
   ): void {
     try {
       this.handleEditItemError(err, entityOrId, phase)
@@ -461,7 +461,7 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
       // become an unhandled-rejection event in the .then callback path).
       console.warn(
         `[IdevsSearchGrid] handleEditItemError override threw (phase=${phase}):`,
-        handlerErr,
+        handlerErr
       )
       // The fallback notifyError is ALSO wrapped — if Serenity's toast
       // path itself throws (detached container, consumer monkey-patch),
@@ -472,7 +472,7 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
       } catch (notifyErr) {
         console.warn(
           '[IdevsSearchGrid] notifyError fallback also threw — no user-visible signal possible:',
-          notifyErr,
+          notifyErr
         )
       }
     }
@@ -503,7 +503,7 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
     if (typeof resultThen === 'function') {
       ;(result as PromiseLike<unknown>).then(
         () => undefined,
-        err => this.safeHandleEditItemError(err, entityOrId, 'dialog-open'),
+        err => this.safeHandleEditItemError(err, entityOrId, 'dialog-open')
       )
     } else if (result !== undefined && result !== null) {
       // [Suggestion #13] Non-thenable, non-nullish return from
@@ -513,9 +513,9 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
       // without crashing the user-gesture path.
       console.warn(
         `[IdevsSearchGrid] loadByIdAndOpenDialog returned non-thenable for id=${String(
-          entityOrId,
+          entityOrId
         )}:`,
-        result,
+        result
       )
     }
   }
@@ -550,17 +550,16 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
   protected handleEditItemError(
     err: unknown,
     entityOrId: string | number,
-    phase?: 'dialog-load' | 'dialog-open',
+    phase?: 'dialog-load' | 'dialog-open'
   ): void {
     notifyError('Unable to open editor dialog.')
     // Structured warn for traceability of user-gesture-triggered dialog
-    // failures (project policy: `no-console: warn`). Consumers can
-    // override handleEditItemError to route elsewhere.
+    // failures. Consumers can override handleEditItemError to route elsewhere.
     console.warn(
       `[IdevsSearchGrid] editItem(${String(entityOrId)}) failed to open dialog${
         phase ? ` (phase=${phase})` : ''
       }:`,
-      err,
+      err
     )
   }
 

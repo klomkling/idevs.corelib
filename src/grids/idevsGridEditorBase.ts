@@ -115,7 +115,7 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
     oldRow: number,
     newRow: number,
     oldItem: TEntity,
-    newItem: TEntity,
+    newItem: TEntity
   ) => void)[] = []
   private readonly _addButtonClickSubscribers: (() => void)[] = []
 
@@ -208,7 +208,7 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
         if (isCloneError) {
           console.warn(
             '[IdevsGridEditorBase] getDeletedRows: structuredClone failed (non-cloneable TEntity?); returning shallow copy:',
-            cloneErr,
+            cloneErr
           )
           return [...this._deletedRows]
         }
@@ -248,7 +248,7 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
     // and return a no-op unsubscribe so the caller has a clear signal.
     if (this._destroyed) {
       console.warn(
-        '[IdevsGridEditorBase] subscribeToAddButtonClick called after destroy() — callback will never fire',
+        '[IdevsGridEditorBase] subscribeToAddButtonClick called after destroy() — callback will never fire'
       )
       return () => undefined
     }
@@ -260,12 +260,12 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
   }
 
   public subscribeToRowChange(
-    callback: (oldRow: number, newRow: number, oldItem: TEntity, newItem: TEntity) => void,
+    callback: (oldRow: number, newRow: number, oldItem: TEntity, newItem: TEntity) => void
   ): () => void {
     // See subscribeToAddButtonClick for the post-destroy rationale.
     if (this._destroyed) {
       console.warn(
-        '[IdevsGridEditorBase] subscribeToRowChange called after destroy() — callback will never fire',
+        '[IdevsGridEditorBase] subscribeToRowChange called after destroy() — callback will never fire'
       )
       return () => undefined
     }
@@ -283,7 +283,6 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
       } catch (error) {
         // Subscriber callbacks are consumer code; log + continue so one
         // bad subscriber doesn't break the whole notify cycle.
-        // eslint-disable-next-line no-console
         console.warn('[IdevsGridEditorBase] add-button-click subscriber threw:', error)
       }
     }
@@ -293,13 +292,12 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
     oldRow: number,
     newRow: number,
     oldItem: TEntity,
-    newItem: TEntity,
+    newItem: TEntity
   ): void {
     for (const cb of this._rowChangeSubscribers) {
       try {
         cb(oldRow, newRow, oldItem, newItem)
       } catch (error) {
-        // eslint-disable-next-line no-console
         console.warn('[IdevsGridEditorBase] row-change subscriber threw:', error)
       }
     }
@@ -506,7 +504,7 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
           }
         }
         return true
-      },
+      }
     )
 
     // Track row changes for the row-change subscribers.
@@ -528,13 +526,13 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
           this._currentActiveRow = newRow
         }
         this._lastValidationFailed = false
-      },
+      }
     )
 
     // Click / dblClick depending on autoEdit.
-    const clickEmitter = (
-      this._opts.autoEdit ? this.slickGrid.onClick : this.slickGrid.onDblClick
-    ) as unknown as SlickEventEmitter
+    const clickEmitter = (this._opts.autoEdit
+      ? this.slickGrid.onClick
+      : this.slickGrid.onDblClick) as unknown as SlickEventEmitter
     const clickEventName = this._opts.autoEdit ? 'onClick' : 'onDblClick'
     this.addEventListener(clickEmitter, clickEventName, (e, args) => {
       if (this.readOnly) {
@@ -604,7 +602,7 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
     this.addEventListener(
       this.slickGrid.onKeyDown as unknown as SlickEventEmitter,
       'onKeyDown',
-      this.handleKeyDown,
+      this.handleKeyDown
     )
   }
 
@@ -616,7 +614,7 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
   protected addEventListener(
     target: SlickEventEmitter | EventTarget | undefined,
     eventName: string,
-    handler: (e: AddListenerEvent, args: ArgsCell | undefined) => unknown,
+    handler: (e: AddListenerEvent, args: ArgsCell | undefined) => unknown
   ): void {
     if (target && typeof (target as SlickEventEmitter).subscribe === 'function') {
       const emitter = target as SlickEventEmitter
@@ -676,7 +674,7 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
     // open an editor on a column that shouldn't be edited.
     const columns = this.slickGrid.getColumns() as unknown as GridColumnArr
     const firstEditableCell = columns.findIndex((_col, idx) =>
-      this.isCellEditable(row, idx, columns),
+      this.isCellEditable(row, idx, columns)
     )
     this.slickGrid.setActiveCell(row, firstEditableCell > -1 ? firstEditableCell : 0)
     this.slickGrid.scrollRowIntoView(row, true)
@@ -704,7 +702,7 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
     } catch (err) {
       console.warn(
         '[IdevsGridEditorBase] deleteCurrentRow: view.deleteItem failed; row NOT added to deletedRows:',
-        err,
+        err
       )
       throw err
     }
@@ -729,10 +727,10 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
     } catch (repaintErr) {
       console.warn(
         '[IdevsGridEditorBase] deleteCurrentRow: repaint after deleteItem threw; data deleted but grid may be stale:',
-        repaintErr,
+        repaintErr
       )
       notifyError(
-        'The row was deleted but the grid display could not be refreshed. Please reload to see the current state.',
+        'The row was deleted but the grid display could not be refreshed. Please reload to see the current state.'
       )
       return
     }
@@ -759,7 +757,10 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
     const currentRow = activeCell.row
     const targetRow = currentRow + delta
 
-    const data = this.slickGrid.getData() as { getItems(): TEntity[]; setItems(items: TEntity[]): void }
+    const data = this.slickGrid.getData() as {
+      getItems(): TEntity[]
+      setItems(items: TEntity[]): void
+    }
     const items = data.getItems()
     if (delta < 0 && currentRow <= 0) return
     if (delta > 0 && currentRow >= items.length - 1) return
@@ -1117,7 +1118,7 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
       committed = lock.commitCurrentEdit()
     } catch (commitError) {
       // Surface programmer/runtime commit failures so the user-data-lost
-      // scenario is traceable. Project policy: `no-console: warn`.
+      // scenario is traceable.
       console.warn('[IdevsGridEditorBase] commitCurrentEdit threw:', commitError)
       this.slickGrid.getEditorLock().cancelCurrentEdit()
       notifyError('Unable to save the cell value. Please try again.')
@@ -1182,7 +1183,6 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
       try {
         cleanup()
       } catch (error) {
-        // eslint-disable-next-line no-console
         console.warn('[IdevsGridEditorBase] event cleanup threw:', error)
       }
     }
@@ -1226,7 +1226,7 @@ type GridColumnArr = GridColumn[]
  * into stale assertions.
  */
 function isDefinedCellTarget(
-  args: ArgsCell | undefined,
+  args: ArgsCell | undefined
 ): args is ArgsCell & { row: number; cell: number } {
   return !!args && args.row !== undefined && args.cell !== undefined
 }

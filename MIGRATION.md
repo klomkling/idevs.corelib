@@ -1,5 +1,69 @@
 # Migration Guide
 
+## 1.1.1 → 1.5.0 — component batches 2-4b
+
+This section is the at-a-glance migration map for all work landed after
+`v1.1.1`. The detailed version-lane sections below break the same work into
+the planned minor releases:
+
+- `1.1.x → 1.2.0`: editor foundations, tag/date editors, search-button editor,
+  numeric tag editor, and SleekGrid editor adapters.
+- `1.2.x → 1.3.0`: self-search button editor and self-search modal/dropdown
+  controllers.
+- `1.3.x → 1.4.0`: dialog, panel, layout, filter, and generic dialog-helper
+  ports.
+- `1.4.x → 1.5.0`: grid, selectable grid, grid editor base, grid edit
+  controller, and grid hardening contracts.
+
+### Required consumer checks
+
+- If you import `IdevsDateEditor`, use the subpath import and make sure your
+  app installs/resolves `flatpickr`:
+
+  ```ts
+  import { IdevsDateEditor } from '@idevs/corelib/editors/idevsDateEditor'
+  ```
+
+- If you import `IdevsSelectableEntityGrid` or `IdevsGridEditorBase`, use the
+  documented grid subpath imports and make sure your Serenity app resolves
+  `@serenity-is/extensions` from Serenity's local `.dotnet` package.
+- Replace direct legacy imports with `Idevs*` imports from `@idevs/corelib`,
+  `@idevs/corelib/editors`, or the documented optional subpaths.
+- Prefer camelCase methods added by this port (`setFilterKeys`,
+  `setCriteriaKeys`, `setDialogSize`, `setSearchValue`, etc.). Compatibility
+  shims exist where noted below, but new code should not add new PascalCase
+  assignment usage.
+- Custom grid cell editors registered through
+  `IdevsGridEditController.registerCellEditor(...)` must mount editor DOM
+  through the provided `appendEditorChild(child)` render callback.
+- Code that depended on application-domain modules (`ShippingMark*`, approval
+  request parameter types, app-specific `CustomerProductPriceEditor` dispatch)
+  must keep those modules in the consuming application or register app-specific
+  replacements.
+
+### Main breaking or behavior-changing items since 1.1.1
+
+- `layoutHelper` prototype extensions were not ported. Use exported helper
+  functions instead of `HTMLElement.prototype` methods.
+- `IdevsSearchButtonEditor` and `IdevsSelfSearchButtonEditor` rename
+  legacy PascalCase/asymmetric setters to camelCase methods:
+  `filterKeys = ...` → `setFilterKeys(...)` and
+  `CriteriaKeys = ...` → `setCriteriaKeys(...)`.
+- `SlickEditorBase.validate()` returns `{ valid: boolean; msg?: string }`.
+  Compare missing messages with `msg === undefined`, not `msg === null`.
+- `IdevsInlineDialog.IdevsCustomButton.style` and
+  `IdevsInlineDialog.IdevsEmptyField.style` accept
+  `Partial<CSSStyleDeclaration>` only; raw CSS strings are no longer accepted.
+- Clone-mode marker changed to `__idevsCloneMode`.
+- `IdevsPanel` does not hard-code a `d/m/Y` default for date editors. Pass
+  `format: 'd/m/Y'` explicitly when you need that display format.
+- `IdevsGridEditorBase.deleteCurrentRow` no longer rethrows grid repaint
+  failures after a successful data-layer delete.
+- `IdevsGridEditorBase` commits active cell edits before any same-row or
+  different-row cell navigation; failed commits block navigation.
+- `IdevsGridEditController.notifyCellChange` catches/logs throwing host
+  subscribers after the editor state is already committed.
+
 ## 1.4.x → 1.5.0 — batch 4b grid extensions
 
 ### New grid classes
@@ -8,17 +72,17 @@ All in `src/grids/`. Three are exported from the root `@idevs/corelib` barrel; t
 
 **Root-importable** (`import { ... } from '@idevs/corelib'`):
 
-- `IdevsEntityGrid` (decorator: `Idevs.CoreLib.IdevsEntityGrid`) — replaces PowerACC's `CsiEntityGrid`. Thin EntityGrid wrapper that forces `renderAllRows: true` in `getSlickOptions`.
-- `IdevsSearchGrid` (decorator: `Idevs.CoreLib.IdevsSearchGrid`) — replaces PowerACC's `CsiSearchGrid`. Abstract base for search-result grids with filter-driven on-demand loading, authorization-gated `editItem`, quick-search toggling, and click-to-highlight row UX.
-- `IdevsGridEditController` (decorator: `Idevs.CoreLib.IdevsGridEditController`) — replaces PowerACC's `GridEditController`. In-cell editor controller for an EntityGrid. Supports Integer, Decimal, Boolean, Lookup, ServiceLookup, plain-string editors out of the box, and exposes a public `registerCellEditor(editorType, factory)` registry for additional types.
+- `IdevsEntityGrid` (decorator: `Idevs.CoreLib.IdevsEntityGrid`) — thin EntityGrid wrapper that forces `renderAllRows: true` in `getSlickOptions`.
+- `IdevsSearchGrid` (decorator: `Idevs.CoreLib.IdevsSearchGrid`) — abstract base for search-result grids with filter-driven on-demand loading, authorization-gated `editItem`, quick-search toggling, and click-to-highlight row UX.
+- `IdevsGridEditController` (decorator: `Idevs.CoreLib.IdevsGridEditController`) — in-cell editor controller for an EntityGrid. Supports Integer, Decimal, Boolean, Lookup, ServiceLookup, plain-string editors out of the box, and exposes a public `registerCellEditor(editorType, factory)` registry for additional types.
 
 **Subpath-only** (`import { ... } from '@idevs/corelib/grids/<name>'`):
 
-- `IdevsSelectableEntityGrid` (decorator: `Idevs.CoreLib.IdevsSelectableEntityGrid`) — replaces PowerACC's `CsiSelectableEntityGrid`. Selectable entity grid with `renderAllRows: true`. Import:
+- `IdevsSelectableEntityGrid` (decorator: `Idevs.CoreLib.IdevsSelectableEntityGrid`) — selectable entity grid with `renderAllRows: true`. Import:
   ```ts
   import { IdevsSelectableEntityGrid } from '@idevs/corelib/grids/idevsSelectableEntityGrid'
   ```
-- `IdevsGridEditorBase` (decorator: `Idevs.CoreLib.IdevsGridEditorBase`) — replaces PowerACC's `CsiGridEditorBase`. Editable grid base with per-row validation, Tab/Enter cell navigation, add/delete/move-up/move-down/expand toolbar buttons, grid expansion (form-field hide/show), row-change + add-button subscribers, and `set_readOnly` toolbar mirror. Import:
+- `IdevsGridEditorBase` (decorator: `Idevs.CoreLib.IdevsGridEditorBase`) — editable grid base with per-row validation, Tab/Enter cell navigation, add/delete/move-up/move-down/expand toolbar buttons, grid expansion (form-field hide/show), row-change + add-button subscribers, and `set_readOnly` toolbar mirror. Import:
   ```ts
   import { IdevsGridEditorBase } from '@idevs/corelib/grids/idevsGridEditorBase'
   ```
@@ -37,9 +101,10 @@ Two of the new grids extend Serenity's `SelectableEntityGrid` / `GridEditorBase`
 
 ### API additions (PascalCase setters preserved as compatibility shims)
 
-Consistent with the batch-4a hardening pattern: PowerACC PascalCase property setters → camelCase methods as the canonical API; PascalCase getters/setters preserved as deprecated compatibility shims.
+Consistent with the batch-4a hardening pattern: legacy PascalCase property setters → camelCase methods as the canonical API; PascalCase getters/setters preserved as deprecated compatibility shims.
 
 `IdevsSearchGrid`:
+
 - `FilterKeys` → `setFilterKeys()` / `getFilterKeys()`
 - `CriteriaKeys` → `setCriteriaKeys()` / `getCriteriaKeys()`
 - `SearchValue` → `setSearchValue()` (write-only; source had no getter)
@@ -47,24 +112,27 @@ Consistent with the batch-4a hardening pattern: PowerACC PascalCase property set
 - `PreItems` → `setPreItems()` / `getPreItems()`
 
 New overridable hooks on `IdevsSearchGrid`:
+
 - `handleEditItemError(err, entityOrId, phase?)` — protected hook invoked when `editItem` fails to load or open a dialog. `phase` distinguishes `'dialog-load'` (rejected `getDialogType()` Promise — typically transient: chunk-load / dynamic-import / module 404) from `'dialog-open'` (dialog constructor threw OR `loadByIdAndOpenDialog` rejected — typically terminal). Default implementation calls `notifyError('Unable to open editor dialog.')` + structured `console.warn`. Backward compat: 2-arg overrides (`(err, entityOrId)`) still type-check — `phase` is optional. Override-throws are caught by the internal `safeHandleEditItemError` wrapper and downgraded so they don't become unhandled rejections.
 
 `IdevsGridEditorBase`:
+
 - `IsFirstClicked` → `setIsFirstClicked()` / `getIsFirstClicked()`
 - `DeletedRows` (getter only) → `getDeletedRows()` — now returns a deep copy via `structuredClone` when available (falls back to shallow spread + warn on `DataCloneError` for non-cloneable `TEntity` shapes)
 
 New overridable hooks on `IdevsGridEditorBase`:
+
 - `formatValidationMessage(errors)` — return `{ text, escapeHtml }` payload forwarded to `notifyError`. Default joins messages with `\n` and `escapeHtml: true`. Override to opt into HTML formatting (consumers MUST sanitize themselves; see XSS hardening notes below).
-- `getOrderField()` — return the per-row field name used as the order key by `moveCurrentRowUp` / `moveCurrentRowDown`. Default `'ItemNo'` for PowerACC parity; return `null` to disable order-field swapping entirely.
+- `getOrderField()` — return the per-row field name used as the order key by `moveCurrentRowUp` / `moveCurrentRowDown`. Default `'ItemNo'` for legacy behavior parity; return `null` to disable order-field swapping entirely.
 
 ### Security / behavior hardening highlights
 
-- **XSS — IdevsGridEditController**: every `targetElement.innerHTML = userValue` write in the editor change handlers is now `target.textContent`. The PowerACC source's String editor case rendered user-typed text straight to innerHTML.
+- **XSS — IdevsGridEditController**: every `targetElement.innerHTML = userValue` write in the editor change handlers is now `target.textContent`. The legacy String editor case rendered user-typed text straight to innerHTML.
 - **XSS — IdevsGridEditorBase**: `notifyError(messages.join('<br />'), ..., { escapeHtml: false })` replaced with the default `escapeHtml: true` and `\n` separator. Subclasses wanting HTML formatting must opt in via the new `formatValidationMessage(errors)` override hook.
 - **Domain leak — IdevsGridEditorBase**: the hardcoded `currentItem.ItemNo` field in `moveCurrentRowUp` / `moveCurrentRowDown` is replaced with an overridable `getOrderField()` hook (defaults to `'ItemNo'` for behavior parity, return `null` to disable order-field swapping entirely).
-- **Domain leak — IdevsGridEditController**: the PowerACC-specific `case "PowerACC.MasterData.CustomerProductPriceEditor"` is dropped from the editor dispatch switch. Replaced with a public `registerCellEditor(editorType, factory)` registry — consumers register their own editor types without subclassing or patching.
+- **Domain leak — IdevsGridEditController**: the application-specific `CustomerProductPriceEditor` special case is dropped from the editor dispatch switch. Replaced with a public `registerCellEditor(editorType, factory)` registry — consumers register their own editor types without subclassing or patching.
 - **Private-field access**: `slickGrid["_options"]` reads replaced with `slickGrid.getOptions()` (`IdevsGridEditController`). `["combobox"]["container"]` private Select2 lookups now go through a typed structural shape with a null guard.
-- **Dead code**: `IdevsGridEditorBase` drops the source's `validateCell` private method (never called) and the `csiUpdateInterface` method from `IdevsSelectableEntityGrid` (empty-body setTimeout).
+- **Dead code**: `IdevsGridEditorBase` drops the source's `validateCell` private method (never called) and an empty-body setTimeout update hook from `IdevsSelectableEntityGrid`.
 - **Lifecycle**: `IdevsGridEditController` adds a public `destroy()` method (source never unsubscribed its 5 SlickGrid event handlers — long-lived host grids accumulated dead subscriptions). `IdevsGridEditorBase` extends the source's `destroy()` to clear subscriber arrays in addition to draining `eventCleanup`.
 - **Null guards**: `IdevsSearchGrid.setSearchValue` defensively checks `toolbar?.element?.findFirst`. `IdevsSearchGrid.onClick` null-guards `.closest('.slick-viewport')` and uses `target.closest('.slick-row')` to walk to the real row element (the source's `target.parentElement` was the cell, not the row, when cells contain nested formatter markup). `IdevsGridEditorBase.toggleGridExpansion` and `calculateAvailableHeight` null-guard `.closest()` calls so the grid can render outside the expected `form > .category > <grid>` chain.
 
@@ -93,9 +161,9 @@ The initial port (rounds 1-5) shipped the surface above. The follow-on review ro
 
 - **`handleEditItemError(err, entityOrId, phase?)`** is now invoked through a `safeHandleEditItemError` wrapper that catches override-throws. Subclasses overriding the hook don't need their own try/catch — a throwing override is downgraded to a logged warning instead of becoming an unhandled rejection.
 
-### NOT ported (stay in PowerACC)
+### Not included
 
-- `ShippingMark*` modules — PowerACC domain code.
+- `ShippingMark*` modules — application-domain code.
 
 ---
 
@@ -105,26 +173,26 @@ The initial port (rounds 1-5) shipped the surface above. The follow-on review ro
 
 All in `src/dialogs/`, exported from the public barrel.
 
-- `IdevsPropertyDialog` (decorator: `Idevs.CoreLib.IdevsPropertyDialog`) — replaces PowerACC's `CsiPropertyDialog`. Extends Serenity `PropertyDialog`; integrates with modal-stack helpers; dispatches `onDialogClose` CustomEvent.
-- `IdevsEntityDialog` (decorator: `Idevs.CoreLib.IdevsEntityDialog`) — replaces PowerACC's `CsiEntityDialog`. Adds dirty-check confirm-on-close, clone mode (`__idevsCloneMode` marker, renamed from `__csiCloneMode`), and a custom close button.
-- `IdevsInlineDialog` (decorator: `Idevs.CoreLib.IdevsInlineDialog`) — replaces PowerACC's `CsiInlineDialog`. Embeds an EntityDialog inline (non-modal) with custom buttons + empty field slots.
-- `IdevsSearchDialog` (decorator: `Idevs.CoreLib.IdevsSearchDialog`) — replaces PowerACC's `CsiSearchDialog`. Abstract base for search-result dialogs with grid integration + clear/new toolbar buttons.
+- `IdevsPropertyDialog` (decorator: `Idevs.CoreLib.IdevsPropertyDialog`) — extends Serenity `PropertyDialog`; integrates with modal-stack helpers; dispatches `onDialogClose` CustomEvent.
+- `IdevsEntityDialog` (decorator: `Idevs.CoreLib.IdevsEntityDialog`) — adds dirty-check confirm-on-close, clone mode (`__idevsCloneMode` marker), and a custom close button.
+- `IdevsInlineDialog` (decorator: `Idevs.CoreLib.IdevsInlineDialog`) — embeds an EntityDialog inline (non-modal) with custom buttons + empty field slots.
+- `IdevsSearchDialog` (decorator: `Idevs.CoreLib.IdevsSearchDialog`) — abstract base for search-result dialogs with grid integration + clear/new toolbar buttons.
 
 ### New panel classes
 
 All in `src/panels/`, exported from the public barrel.
 
-- `IdevsPage` (decorator: `Idevs.CoreLib.IdevsPage`) — replaces PowerACC's `CsiPage`. Page-level container; no preact dependency (source used `render(<CsiTitle/>)`; ported with plain DOM).
-- `IdevsPanel` (decorator: `Idevs.CoreLib.IdevsPanel`) — replaces PowerACC's `CsiPanel`. Field-rendering container with label + input pairs.
-- `IdevsOffcanvasPanel` (decorator: `Idevs.CoreLib.IdevsOffcanvasPanel`) — replaces PowerACC's `OffCanvasPanel`. Bootstrap offcanvas slide-out hosting an EntityDialog.
-- `IdevsTabControl` (decorator: `Idevs.CoreLib.IdevsTabControl`) — replaces PowerACC's `CsiTabControl`. Bootstrap tabs with full WAI-ARIA wiring.
+- `IdevsPage` (decorator: `Idevs.CoreLib.IdevsPage`) — page-level container implemented with plain DOM.
+- `IdevsPanel` (decorator: `Idevs.CoreLib.IdevsPanel`) — field-rendering container with label + input pairs.
+- `IdevsOffcanvasPanel` (decorator: `Idevs.CoreLib.IdevsOffcanvasPanel`) — Bootstrap offcanvas slide-out hosting an EntityDialog.
+- `IdevsTabControl` (decorator: `Idevs.CoreLib.IdevsTabControl`) — Bootstrap tabs with full WAI-ARIA wiring.
 
 ### New helpers
 
-- `src/helpers/layoutHelper.ts` — 21 DOM/layout utilities ported from PowerACC's `LayoutHelper.ts`. **Behavioral change**: the source attached 7 of these as `HTMLElement.prototype` methods; they are now plain functions:
+- `src/helpers/layoutHelper.ts` — 21 DOM/layout utilities. **Behavioral change**: the legacy implementation attached 7 of these as `HTMLElement.prototype` methods; they are now plain functions:
 
   ```ts
-  // PowerACC:
+  // before:
   element.createLayout(3, 'col')
 
   // idevs.corelib:
@@ -138,26 +206,26 @@ All in `src/panels/`, exported from the public barrel.
 
   Note: `layoutHelper.ts`'s async polling `getElementHeight` is re-exported as `waitForElementHeight` to disambiguate from `utils/dom.ts`'s synchronous variant.
 
-- `src/helpers/filterHelper.ts` — `clearFilter(filters)` ported from PowerACC's `FilterHelper.ts`.
+- `src/helpers/filterHelper.ts` — `clearFilter(filters)`.
 
-- `src/helpers/dialogHelpers.ts` (plural — new file, leaves existing `dialogHelper.ts` untouched) — generic dialog/modal helpers from PowerACC's `Dialogs.ts`. Exports: `setDialogSize`, `fixMobileCloseDialog`, `groupFields`, `setActiveModal`, `setInactiveModal`, `disableRadioButtons`, `enableRadioButtons`, `enableRadioButtonEditor`, `disableRadioButtonEditor`, `enableEditor`, `disableEditor`, `disableToolbarButton`, `enableToolbarButton`, `toggleInputValidateMessage`, `addSearchButton`, `SearchDialogOptions`, `IdevsDialogEventName`, `createCustomEvent`.
+- `src/helpers/dialogHelpers.ts` (plural — new file, leaves existing `dialogHelper.ts` untouched) — generic dialog/modal helpers. Exports: `setDialogSize`, `fixMobileCloseDialog`, `groupFields`, `setActiveModal`, `setInactiveModal`, `disableRadioButtons`, `enableRadioButtons`, `enableRadioButtonEditor`, `disableRadioButtonEditor`, `enableEditor`, `disableEditor`, `disableToolbarButton`, `enableToolbarButton`, `toggleInputValidateMessage`, `addSearchButton`, `SearchDialogOptions`, `IdevsDialogEventName`, `createCustomEvent`.
 
-### NOT ported (stay in PowerACC)
+### Not included
 
-- `ShippingMarkEntityDialog`, `ShippingMarkPanel` — PowerACC's shipping-mark module.
-- The PowerACC-domain types from `Dialogs.ts`: `NameValueCollection`, `RequestApprovalDetailParameter`, `IvnRequestApprovalDetailParameter`, `BookingRequestApprovalDetailParameter`, `RequestApprovalParameter`, `RequestOnedateReportParameter`, `InventoryRequestApprovalParameter`, `BookingRequestApprovalParameter`, `RequestPrintShippingMarkParameter`. These reference `@/ServerTypes/Sales/ApprovalRequestRow` and similar — domain code stays in PowerACC.
+- `ShippingMarkEntityDialog`, `ShippingMarkPanel` — application-specific shipping-mark module.
+- Application-domain types from the legacy dialog helpers: `NameValueCollection`, `RequestApprovalDetailParameter`, `IvnRequestApprovalDetailParameter`, `BookingRequestApprovalDetailParameter`, `RequestApprovalParameter`, `RequestOnedateReportParameter`, `InventoryRequestApprovalParameter`, `BookingRequestApprovalParameter`, `RequestPrintShippingMarkParameter`. These reference application-specific server rows and should stay in the consuming application.
 
 ### API additions (PascalCase setters preserved as compatibility shims)
 
 - Dialogs now expose **camelCase methods** as the preferred API: `setFilterKeys()`, `setCriteriaKeys()`, `setSearchValue()`, `setDialogSize()`, `setDialogType()`, `setDialogPermission()`, `setPreItems()`.
-- The PowerACC **PascalCase assignment setters** (`dialog.FilterKeys = ...`, `dialog.CriteriaKeys = ...`, `dialog.SearchValue = ...`, `dialog.DialogSize = ...`, `dialog.DialogType = ...`, `dialog.DialogPermission = ...`, `dialog.preItems = ...`) **are preserved as compatibility shims** that route to the camelCase methods. Existing callers (notably `IdevsSearchButtonEditor.openDialog`, which still writes by assignment per the PowerACC dialog interface contract) continue to work unchanged. Subclass overrides of the camelCase methods take effect through either entry point.
+- Legacy **PascalCase assignment setters** (`dialog.FilterKeys = ...`, `dialog.CriteriaKeys = ...`, `dialog.SearchValue = ...`, `dialog.DialogSize = ...`, `dialog.DialogType = ...`, `dialog.DialogPermission = ...`, `dialog.preItems = ...`) **are preserved as compatibility shims** that route to the camelCase methods. Existing callers continue to work unchanged. Subclass overrides of the camelCase methods take effect through either entry point.
 - New consumer code should prefer the camelCase methods. The PascalCase shims are not deprecated in this release but may be in a future major bump — track via the project changelog.
 - `IdevsInlineDialog.IdevsCustomButton.style` and `IdevsInlineDialog.IdevsEmptyField.style` no longer accept a raw CSS-string variant (CSS-injection vector) — use `Partial<CSSStyleDeclaration>` only.
-- `CsiPanel.PanelTitle` / `CsiPanel.Fields` getters/setters → `IdevsPanel.title` + `IdevsPanel.setTitle()` + `IdevsPanel.getFields()` + `IdevsPanel.setFields()`.
-- Clone-mode marker `__csiCloneMode` → `__idevsCloneMode`. Consumers that inspect this marker directly need to migrate (rare — typically only `isCloneMode()` users).
-- `IdevsPanel`'s editor factory no longer special-cases `CsiDateEditor` for the `format: 'd/m/Y'` default. Consumers using `IdevsDateEditor` (which lives at the `@idevs/corelib/editors/idevsDateEditor` subpath because of its optional `flatpickr` peer dep) must set `format: 'd/m/Y'` explicitly in their `editorOptions`.
+- Legacy panel title/field getters and setters → `IdevsPanel.title` + `IdevsPanel.setTitle()` + `IdevsPanel.getFields()` + `IdevsPanel.setFields()`.
+- Clone-mode marker is now `__idevsCloneMode`. Consumers that inspect the old marker directly need to migrate (rare — typically only `isCloneMode()` users).
+- `IdevsPanel`'s editor factory no longer special-cases the legacy date editor for the `format: 'd/m/Y'` default. Consumers using `IdevsDateEditor` (which lives at the `@idevs/corelib/editors/idevsDateEditor` subpath because of its optional `flatpickr` peer dep) must set `format: 'd/m/Y'` explicitly in their `editorOptions`.
 
-### Hardening deltas vs PowerACC source
+### Hardening deltas vs legacy source
 
 - **Security**: XSS-safe label markup in `IdevsPanel` and `toggleInputValidateMessage` (DOM API + `textContent` + `createElement('sup')` — replaces the source's raw HTML-property writes on form labels). `IdevsOffcanvasPanel`'s titlebar copy uses `replaceChildren(cloneNode())` instead of raw markup copy.
 - **Resource hygiene**: `IdevsEntityDialog`'s `beforeunload` window listener is now stored and removed in `destroy()` (source registered without cleanup — leak across dialog lifetimes).
@@ -172,11 +240,11 @@ All in `src/panels/`, exported from the public barrel.
 ```ts
 // src/index.ts after 1.4.0
 export * from './editors'
-export * from './dialogs'    // NEW
+export * from './dialogs' // NEW
 export * from './formatters'
-export * from './panels'     // NEW
+export * from './panels' // NEW
 export * from './ui'
-export * from './helpers'    // EXTENDED — adds dialogHelpers, filterHelper, layoutHelper
+export * from './helpers' // EXTENDED — adds dialogHelpers, filterHelper, layoutHelper
 export * from './utils'
 export * from './types'
 ```
@@ -185,12 +253,12 @@ export * from './types'
 
 ### New editors
 
-- `IdevsSelfSearchButtonEditor` (decorator: `Idevs.CoreLib.IdevsSelfSearchButtonEditor`) — self-hosted search-button editor that fetches results via Serenity's `serviceCall` and renders them in an in-editor modal or dropdown. No separately-registered Serenity search dialog required. Replaces PowerACC's `SelfSearchButtonEditor`.
-- `SlickSelfSearchButtonEditor` — SleekGrid column adapter wrapping `IdevsSelfSearchButtonEditor`. Replaces PowerACC's `SlickSelfSearchButtonEditor`.
+- `IdevsSelfSearchButtonEditor` (decorator: `Idevs.CoreLib.IdevsSelfSearchButtonEditor`) — self-hosted search-button editor that fetches results via Serenity's `serviceCall` and renders them in an in-editor modal or dropdown. No separately-registered Serenity search dialog required.
+- `SlickSelfSearchButtonEditor` — SleekGrid column adapter wrapping `IdevsSelfSearchButtonEditor`.
 
 ### New options
 
-- `presentation: 'modal' | 'dropdown'` (default: `'modal'`) — selects the in-editor result UI. The PowerACC source had two parallel code paths for these; in this port they're separate controllers (`SearchModalController` + `SearchDropdownController`) selected at construction time. Switching mid-life is NOT supported.
+- `presentation: 'modal' | 'dropdown'` (default: `'modal'`) — selects the in-editor result UI. The two presentation modes are implemented as separate controllers (`SearchModalController` + `SearchDropdownController`) selected at construction time. Switching mid-life is NOT supported.
 
 ### Breaking API renames (same as 1.2.0 for SearchButtonEditor)
 
@@ -198,7 +266,7 @@ export * from './types'
 - `editor.CriteriaKeys = [...]` → `editor.setCriteriaKeys([...])`
 - `editor.setFilterValue(key, value)` is kept from the source unchanged.
 
-### Hardening deltas vs PowerACC source
+### Hardening deltas vs legacy source
 
 - Decomposed from a single 3,404-LOC file into focused modules:
   - `src/editors/selfSearch/columnFormatters.ts` — pure parsing + built-in formatters.
@@ -218,26 +286,45 @@ export * from './types'
 - Result rows are not virtualized. Source caps via `maxResultsToShow`; large result sets render all rows to DOM (mirrors source behavior).
 - The modal and dropdown controllers intentionally retain ~40% duplicated table/keyboard/sort logic. A follow-up extraction (`selfSearch/resultsTable.ts`) is tracked separately to avoid premature consolidation.
 
-## 1.1.x → 1.2.0 — batch 3a search-button editor foundation
+## 1.1.x → 1.2.0 — batch 2 editors + batch 3a search-button editor foundation
 
 ### New editors
 
-- `IdevsSearchButtonEditor` (decorator: `Idevs.CoreLib.IdevsSearchButtonEditor`) — hidden input + display input + search/clear buttons + Serenity dialog integration. Replaces PowerACC's `SearchButtonEditor`.
-- `IdevsNumericTagEditor` (decorator: `Idevs.CoreLib.IdevsNumericTagEditor`) — extends `IdevsTagEditor` with prefix/suffix/specialValues formatting. Replaces PowerACC's `NumericTagEditor`.
-- `SlickEditorBase` (no decorator — SleekGrid column-editor base, not a Serenity widget) — abstract base for SleekGrid column editors wrapping a Serenity widget. Replaces PowerACC's `SlickEditorBase`.
-- `SlickSearchButtonEditor` — SleekGrid column adapter wrapping `IdevsSearchButtonEditor`. Replaces PowerACC's `SlickSearchButtonEditor`.
+- `IdevsTagEditor` (decorator: `Idevs.CoreLib.IdevsTagEditor`) — tag/autocomplete input with listbox suggestions, casing options, placeholder support, required validation, read-only mode, and keyboard navigation.
+- `IdevsDateEditor` (decorator: `Idevs.CoreLib.IdevsDateEditor`) — Serenity `DateEditor` wrapper with user-format display and ISO `yyyy-MM-dd` values. This editor is available only from the optional subpath because it depends on `flatpickr`:
+  ```ts
+  import { IdevsDateEditor } from '@idevs/corelib/editors/idevsDateEditor'
+  ```
+- `IdevsSearchButtonEditor` (decorator: `Idevs.CoreLib.IdevsSearchButtonEditor`) — hidden input + display input + search/clear buttons + Serenity dialog integration.
+- `IdevsNumericTagEditor` (decorator: `Idevs.CoreLib.IdevsNumericTagEditor`) — extends `IdevsTagEditor` with prefix/suffix/specialValues formatting.
+- `SlickEditorBase` (no decorator — SleekGrid column-editor base, not a Serenity widget) — abstract base for SleekGrid column editors wrapping a Serenity widget.
+- `SlickSearchButtonEditor` — SleekGrid column adapter wrapping `IdevsSearchButtonEditor`.
+
+### Optional peer dependency: `flatpickr`
+
+`IdevsDateEditor` is intentionally not re-exported from
+`@idevs/corelib/editors` or the root barrel. Consumers who never use the date
+editor do not need `flatpickr`; consumers who do use it must import the subpath
+above and ensure `flatpickr` is resolvable in their app.
 
 ### Breaking API renames
 
-- `IdevsSearchButtonEditor` ports the PowerACC API but renames two PascalCase setters to camelCase methods:
+- `IdevsSearchButtonEditor` renames two legacy PascalCase setters to camelCase methods:
   - `editor.filterKeys = {...}` (asymmetric setter) → `editor.setFilterKeys({...})`
   - `editor.CriteriaKeys = [...]` (PascalCase asymmetric setter) → `editor.setCriteriaKeys([...])`
 - Consumers using `editorParams` to configure these are unaffected.
 - `SlickEditorBase`'s `TEditor` generic is now constrained by `SlickWrappedEditor` (must expose `domNode: HTMLElement`; `value?`, `destroy?`, `props?` are optional). Subclasses wrapping editors that lack those shapes need to declare them.
 - `SlickEditorBase.validate()` now returns `{ valid: boolean; msg?: string }` (matching SleekGrid's `ValidationResult`) instead of `{ valid: boolean; msg: string | null }`. The optional-property form is compatible with the source semantics but TypeScript callers comparing `msg === null` need to compare `msg === undefined`.
 
-### Hardening deltas vs PowerACC source
+### Hardening deltas vs legacy source
 
+- `IdevsTagEditor` uses ARIA combobox/listbox roles, stable option IDs,
+  document-click cleanup, related-target blur handling, and a single
+  `set_value()` chokepoint so casing and validation stay consistent.
+- `IdevsDateEditor` keeps the hidden source input in ISO format, syncs
+  validation classes to flatpickr's visible alt input, places calendars inside
+  active modals when needed, and tears down mutation/keyboard handlers in
+  `destroy()`.
 - XSS-safe required marker via `document.createElement('sup')` + `textContent` (no raw HTML-property writes on labels — same fix pattern as the 1.1.0 `DropdownToolButton` audit).
 - WAI-ARIA combobox role on the display input (`role="combobox"`, `aria-autocomplete="list"`, `aria-haspopup="dialog"`, `aria-expanded`, `aria-required`).
 - Single-chokepoint value writes — every `domNode.value` mutation routes through `set_value()`.
@@ -250,11 +337,11 @@ export * from './types'
 
 ### Recommended migration
 
-Replace direct PowerACC imports:
+Replace direct legacy imports:
 
 ```ts
 // before
-import { SearchButtonEditor } from 'PowerACC/Modules/Csi'
+import { SearchButtonEditor } from 'legacy-app'
 
 // after
 import { IdevsSearchButtonEditor } from '@idevs/corelib/editors'
@@ -373,13 +460,13 @@ of items deprecated in 1.1.0.
 
 ### Compatibility direction
 
-| | 1.x lane (current) | 2.x lane (future) |
-|---|---|---|
-| `Idevs.Net.CoreLib` | 0.7.x | 0.8+ (planned) |
-| .NET TFM | `net8.0` | `net10.0` |
-| `Serenity.Net.Services` | `8.8.9` | `10.x` |
-| `@serenity-is/corelib` | `>=8.8.6 <9` | `>=10.0.0 <11` |
-| Visual Studio | 2022 | 2026 |
+|                         | 1.x lane (current) | 2.x lane (future) |
+| ----------------------- | ------------------ | ----------------- |
+| `Idevs.Net.CoreLib`     | 0.7.x              | 0.8+ (planned)    |
+| .NET TFM                | `net8.0`           | `net10.0`         |
+| `Serenity.Net.Services` | `8.8.9`            | `10.x`            |
+| `@serenity-is/corelib`  | `>=8.8.6 <9`       | `>=10.0.0 <11`    |
+| Visual Studio           | 2022               | 2026              |
 
 Serenity 9.x is intentionally skipped — the project follows Serenity's own
 ".NET 8 stays on the 8.x lane; .NET 10 moves to 10.x" guidance.
@@ -387,10 +474,12 @@ Serenity 9.x is intentionally skipped — the project follows Serenity's own
 ### Planned 2.0.0 changes
 
 **Deprecation removals (from 1.1.0):**
+
 - Remove `IdevsContentResponse.FileName` (use `DownloadName`).
 - Remove implicit `import './globals'` from the root entry (use the subpath).
 
 **Wire-contract alignment with .NET DTOs:**
+
 - Rename camelCase wire fields to PascalCase to match the .NET DTO:
   `viewName` → `ViewName`, `companyName` → `CompanyName`,
   `reportName` → `ReportName`, `selectionRange` → `SelectionRange`,
@@ -400,6 +489,7 @@ Serenity 9.x is intentionally skipped — the project follows Serenity's own
   wire DTO) — they remain on `PdfExportOptions` (the client-side options type).
 
 **Serenity 10 modernization:**
+
 - Replace `@Decorators.registerEditor(...)` / `@Decorators.registerFormatter(...)`
   / `@Decorators.option()` with `static [Symbol.typeInfo] = this.registerClass(...)`
   in every editor and formatter (Serenity 9+ deprecated decorator registration).
@@ -412,6 +502,7 @@ Serenity 9.x is intentionally skipped — the project follows Serenity's own
   `tsconfig.types`.
 
 **General cleanup:**
+
 - Enable full TypeScript strict mode.
 - Consider dropping CommonJS in favor of ESM-only, aligned with the modern
   Serenity 10 toolchain.
