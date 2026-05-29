@@ -398,7 +398,13 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
       return
     }
 
-    const dialogTypeOrPromise = this.getDialogType()
+    let dialogTypeOrPromise: unknown
+    try {
+      dialogTypeOrPromise = this.getDialogType()
+    } catch (err) {
+      this.safeHandleEditItemError(err, entityOrId, 'dialog-load')
+      return
+    }
 
     // PromiseLike duck-type check via `typeof` — robust against null/
     // primitive masquerading as DialogType (the cast probe in the source
