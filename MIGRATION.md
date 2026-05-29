@@ -1,5 +1,79 @@
 # Migration Guide
 
+## 1.4.x → 1.5.0 — batch 4b grid extensions
+
+### New grid classes
+
+All in `src/grids/`. Three are exported from the root `@idevs/corelib` barrel; two require a subpath because they depend on `@serenity-is/extensions` (see "Optional peer dependency" below).
+
+**Root-importable** (`import { ... } from '@idevs/corelib'`):
+
+- `IdevsEntityGrid` (decorator: `Idevs.CoreLib.IdevsEntityGrid`) — replaces PowerACC's `CsiEntityGrid`. Thin EntityGrid wrapper that forces `renderAllRows: true` in `getSlickOptions`.
+- `IdevsSearchGrid` (decorator: `Idevs.CoreLib.IdevsSearchGrid`) — replaces PowerACC's `CsiSearchGrid`. Abstract base for search-result grids with filter-driven on-demand loading, authorization-gated `editItem`, quick-search toggling, and click-to-highlight row UX.
+- `IdevsGridEditController` (decorator: `Idevs.CoreLib.IdevsGridEditController`) — replaces PowerACC's `GridEditController`. In-cell editor controller for an EntityGrid. Supports Integer, Decimal, Boolean, Lookup, ServiceLookup, plain-string editors out of the box, and exposes a public `registerCellEditor(editorType, factory)` registry for additional types.
+
+**Subpath-only** (`import { ... } from '@idevs/corelib/grids/<name>'`):
+
+- `IdevsSelectableEntityGrid` (decorator: `Idevs.CoreLib.IdevsSelectableEntityGrid`) — replaces PowerACC's `CsiSelectableEntityGrid`. Selectable entity grid with `renderAllRows: true`. Import:
+  ```ts
+  import { IdevsSelectableEntityGrid } from '@idevs/corelib/grids/idevsSelectableEntityGrid'
+  ```
+- `IdevsGridEditorBase` (decorator: `Idevs.CoreLib.IdevsGridEditorBase`) — replaces PowerACC's `CsiGridEditorBase`. Editable grid base with per-row validation, Tab/Enter cell navigation, add/delete/move-up/move-down/expand toolbar buttons, grid expansion (form-field hide/show), row-change + add-button subscribers, and `set_readOnly` toolbar mirror. Import:
+  ```ts
+  import { IdevsGridEditorBase } from '@idevs/corelib/grids/idevsGridEditorBase'
+  ```
+
+### Optional peer dependency: `@serenity-is/extensions`
+
+Two of the new grids extend Serenity's `SelectableEntityGrid` / `GridEditorBase`, which live in `@serenity-is/extensions`. This package is **NOT published on the public npm registry**: it ships only with Serenity's .NET install, at `node_modules/.dotnet/serenity.extensions`. Consumer projects typically reference it via a local file path in their own `package.json`:
+
+```json
+"dependencies": {
+  "@serenity-is/extensions": "./node_modules/.dotnet/serenity.extensions"
+}
+```
+
+`@idevs/corelib` now declares `@serenity-is/extensions` as an **optional** peer dependency with a permissive Serenity-major range (`>=8.7 <11`). Consumers without it installed are not forced to error at install time — only at import time of the two subpath grids above. Consumers who never import them are unaffected.
+
+### API additions (PascalCase setters preserved as compatibility shims)
+
+Consistent with the batch-4a hardening pattern: PowerACC PascalCase property setters → camelCase methods as the canonical API; PascalCase getters/setters preserved as deprecated compatibility shims.
+
+`IdevsSearchGrid`:
+- `FilterKeys` → `setFilterKeys()` / `getFilterKeys()`
+- `CriteriaKeys` → `setCriteriaKeys()` / `getCriteriaKeys()`
+- `SearchValue` → `setSearchValue()` (write-only; source had no getter)
+- `EditPermission` → `setEditPermission()` / `getEditPermission()`
+- `PreItems` → `setPreItems()` / `getPreItems()`
+
+New overridable hooks on `IdevsSearchGrid`:
+- `handleEditItemError(err, entityOrId, phase?)` — protected hook invoked when `editItem` fails to load or open a dialog. `phase` distinguishes `'dialog-load'` (rejected `getDialogType()` Promise — typically transient: chunk-load / dynamic-import / module 404) from `'dialog-open'` (dialog constructor threw OR `loadByIdAndOpenDialog` rejected — typically terminal). Default implementation calls `notifyError('Unable to open editor dialog.')` + structured `console.warn`. Backward compat: 2-arg overrides (`(err, entityOrId)`) still type-check — `phase` is optional. Override-throws are caught by the internal `safeHandleEditItemError` wrapper and downgraded so they don't become unhandled rejections.
+
+`IdevsGridEditorBase`:
+- `IsFirstClicked` → `setIsFirstClicked()` / `getIsFirstClicked()`
+- `DeletedRows` (getter only) → `getDeletedRows()` — now returns a deep copy via `structuredClone` when available (falls back to shallow spread + warn on `DataCloneError` for non-cloneable `TEntity` shapes)
+
+New overridable hooks on `IdevsGridEditorBase`:
+- `formatValidationMessage(errors)` — return `{ text, escapeHtml }` payload forwarded to `notifyError`. Default joins messages with `\n` and `escapeHtml: true`. Override to opt into HTML formatting (consumers MUST sanitize themselves; see XSS hardening notes below).
+- `getOrderField()` — return the per-row field name used as the order key by `moveCurrentRowUp` / `moveCurrentRowDown`. Default `'ItemNo'` for PowerACC parity; return `null` to disable order-field swapping entirely.
+
+### Security / behavior hardening highlights
+
+- **XSS — IdevsGridEditController**: every `targetElement.innerHTML = userValue` write in the editor change handlers is now `target.textContent`. The PowerACC source's String editor case rendered user-typed text straight to innerHTML.
+- **XSS — IdevsGridEditorBase**: `notifyError(messages.join('<br />'), ..., { escapeHtml: false })` replaced with the default `escapeHtml: true` and `\n` separator. Subclasses wanting HTML formatting must opt in via the new `formatValidationMessage(errors)` override hook.
+- **Domain leak — IdevsGridEditorBase**: the hardcoded `currentItem.ItemNo` field in `moveCurrentRowUp` / `moveCurrentRowDown` is replaced with an overridable `getOrderField()` hook (defaults to `'ItemNo'` for behavior parity, return `null` to disable order-field swapping entirely).
+- **Domain leak — IdevsGridEditController**: the PowerACC-specific `case "PowerACC.MasterData.CustomerProductPriceEditor"` is dropped from the editor dispatch switch. Replaced with a public `registerCellEditor(editorType, factory)` registry — consumers register their own editor types without subclassing or patching.
+- **Private-field access**: `slickGrid["_options"]` reads replaced with `slickGrid.getOptions()` (`IdevsGridEditController`). `["combobox"]["container"]` private Select2 lookups now go through a typed structural shape with a null guard.
+- **Dead code**: `IdevsGridEditorBase` drops the source's `validateCell` private method (never called) and the `csiUpdateInterface` method from `IdevsSelectableEntityGrid` (empty-body setTimeout).
+- **Lifecycle**: `IdevsGridEditController` adds a public `destroy()` method (source never unsubscribed its 5 SlickGrid event handlers — long-lived host grids accumulated dead subscriptions). `IdevsGridEditorBase` extends the source's `destroy()` to clear subscriber arrays in addition to draining `eventCleanup`.
+- **Null guards**: `IdevsSearchGrid.setSearchValue` defensively checks `toolbar?.element?.findFirst`. `IdevsSearchGrid.onClick` null-guards `.closest('.slick-viewport')` and uses `target.closest('.slick-row')` to walk to the real row element (the source's `target.parentElement` was the cell, not the row, when cells contain nested formatter markup). `IdevsGridEditorBase.toggleGridExpansion` and `calculateAvailableHeight` null-guard `.closest()` calls so the grid can render outside the expected `form > .category > <grid>` chain.
+
+### NOT ported (stay in PowerACC)
+
+- `ShippingMark*` modules — PowerACC domain code.
+
+---
+
 ## 1.3.x → 1.4.0 — batch 4a dialog/panel foundation
 
 ### New dialog classes
