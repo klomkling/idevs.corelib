@@ -413,8 +413,8 @@ export class IdevsGridEditController<
         this.enterKey = false
         return
       }
-      let row = this.currentRow ?? 0
-      let cell = this.currentCell ?? 0
+      let row = this.currentRow ?? args.row ?? 0
+      let cell = this.currentCell ?? args.cell ?? 0
       if (e.shiftKey) {
         cell = this.previousCell(cell)
         if (cell < 0) {
@@ -825,6 +825,7 @@ export class IdevsGridEditController<
       item[column.field] = Number.isFinite(parsed) ? parsed : 0
       // XSS hardening: textContent (source used innerHTML).
       target.textContent = stringValue
+      this.cleanupCellEditorClasses(target)
       notifyCellChange()
     })
     this.appendEditorChild(target, (integerEditor as unknown as RemovableEditor).domNode)
@@ -854,6 +855,7 @@ export class IdevsGridEditController<
       // XSS hardening: textContent (source used innerHTML, fine for
       // numeric output but consistent with the rest of the editors).
       target.textContent = formattedValue
+      this.cleanupCellEditorClasses(target)
       notifyCellChange()
     })
     this.appendEditorChild(target, (decimalEditor as unknown as RemovableEditor).domNode)
@@ -995,6 +997,7 @@ export class IdevsGridEditController<
       // are user-typed text, so embedded `<script>` or event-handler
       // attributes would execute on display.
       target.textContent = value
+      this.cleanupCellEditorClasses(target)
       notifyCellChange()
     })
     this.appendEditorChild(target, (stringEditor as unknown as RemovableEditor).domNode)

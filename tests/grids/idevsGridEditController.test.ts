@@ -912,6 +912,29 @@ describe('IdevsGridEditController — editor marker + controller-managed toggle-
     expect(body).toMatch(/target\.textContent\s*=/)
   })
 
+  it('source: integer/decimal/string commit handlers cleanup editor classes', async () => {
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const url = await import('node:url')
+    const here = path.dirname(url.fileURLToPath(import.meta.url))
+    const sourceFile = path.join(here, '..', '..', 'src', 'grids', 'idevsGridEditController.ts')
+    const src = await fs.readFile(sourceFile, 'utf-8')
+    const rendererBoundaries: Array<[string, string]> = [
+      ['renderIntegerEditor', 'renderDecimalEditor'],
+      ['renderDecimalEditor', 'renderBooleanEditor'],
+      ['renderStringEditor', 'private editorParamsFor('],
+    ]
+    for (const [rendererName, nextMarker] of rendererBoundaries) {
+      const startIdx = src.indexOf(`${rendererName}:`)
+      expect(startIdx).toBeGreaterThan(-1)
+      const remainder = src.slice(startIdx)
+      const nextIdx = remainder.indexOf(nextMarker)
+      const body = nextIdx > -1 ? remainder.slice(0, nextIdx) : remainder
+      expect(body).toMatch(/target\.textContent\s*=/)
+      expect(body).toMatch(/this\.cleanupCellEditorClasses\(target\)/)
+    }
+  })
+
   it('toggle-off strips BOTH with-editor AND text-white classes (round-7 #5)', () => {
     // Round 7 #5: prior toggle-off only removed `with-editor`. The
     // Lookup renderer adds BOTH `with-editor` (the controller) AND
@@ -1435,6 +1458,38 @@ describe('IdevsGridEditController — handleKeyDown bounds-check for unfound edi
     const notified = onActiveCellChangedNotify.mock.calls[0]![0] as { row: number; cell: number }
     expect(notified.row).toBe(0)
     expect(notified.cell).toBe(1)
+  })
+
+  it('uses keydown args as navigation seed when current cell is unset', () => {
+    const { grid, slickGrid } = makeFakeGrid({
+      editable: true,
+      autoEdit: true,
+      columns: [
+        { field: 'a', visible: true, sourceItem: {} },
+        { field: 'b', visible: true, sourceItem: {} },
+        { field: 'c', visible: true, sourceItem: {} },
+      ],
+      items: [{ a: 1, b: 2, c: 3 }],
+    })
+    controller = new IdevsGridEditController({
+      grid: grid as unknown as Parameters<typeof IdevsGridEditController>[0]['grid'],
+    })
+    const onActiveCellChangedNotify = vi.fn()
+    slickGrid.onActiveCellChanged.notify = onActiveCellChangedNotify
+
+    const keyHandler = slickGrid.onKeyDown.subscribers[0]
+    keyHandler(
+      {
+        key: 'Tab',
+        shiftKey: false,
+        preventDefault: () => undefined,
+        stopImmediatePropagation: () => undefined,
+      },
+      { row: 0, cell: 1 } as Record<string, unknown>,
+    )
+    const notified = onActiveCellChangedNotify.mock.calls[0]![0] as { row: number; cell: number }
+    expect(notified.row).toBe(0)
+    expect(notified.cell).toBe(2)
   })
 })
 

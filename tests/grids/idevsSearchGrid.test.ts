@@ -149,6 +149,14 @@ describe('IdevsSearchGrid — filter / criteria state', () => {
     expect(probe.refresh).toHaveBeenCalledTimes(1)
   })
 
+  it('applyCriteriaParameter preserves existing CustomData keys', () => {
+    const probe = makeProbe()
+    probe.view.params['CustomData'] = { Region: 'APAC' }
+    probe._criteriaKeys = ['Name', '=', 'foo']
+    probe.applyCriteriaParameter()
+    expect(probe.view.params['CustomData']).toEqual({ Region: 'APAC', Important: true })
+  })
+
   it('applyCriteriaParameter removes Criteria key when array is empty', () => {
     const probe = makeProbe()
     probe.view.params['Criteria'] = ['stale']

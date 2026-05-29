@@ -260,7 +260,10 @@ export abstract class IdevsSearchGrid<TRow, P = unknown> extends IdevsEntityGrid
       CustomData?: Record<string, unknown>
     }
     if (this._criteriaKeys && this._criteriaKeys.length > 0) {
-      params.CustomData = { Important: true }
+      params.CustomData = {
+        ...(params.CustomData ?? {}),
+        Important: true,
+      }
       params.Criteria = this._criteriaKeys
     } else {
       delete params.Criteria

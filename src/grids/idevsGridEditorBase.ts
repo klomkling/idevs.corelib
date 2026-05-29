@@ -646,31 +646,24 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
     const item = this.view.getItem(row)
     if (!item) return
 
-    // Transactional delete: ONLY push onto `_deletedRows` after
-    // `view.deleteItem(...)` has succeeded. The prior ordering
-    // (push-then-delete) was a silent-data-corruption hazard — if
-    // `view.deleteItem` (or any subsequent grid call) threw, the
-    // _deletedRows array would retain a phantom row that was never
-    // actually removed from the view, so the next save would ship a
-    // delete request for an entity the user still sees rendered.
+    // Transactional delete: only rollback/abort on deleteItem failure.
+    // Once deleteItem succeeds, record the deletion immediately so any
+    // later repaint error doesn't lose the delete intent.
     const idProperty = this.getIdProperty()
     const idValue = (item as Record<string, unknown>)[idProperty]
     try {
       this.view.deleteItem(idValue as unknown as never)
-      this.slickGrid.invalidate()
-      this.slickGrid.updateRowCount()
-      this.slickGrid.render()
     } catch (err) {
       console.warn(
-        '[IdevsGridEditorBase] deleteCurrentRow: view/grid mutation failed; row NOT added to deletedRows:',
+        '[IdevsGridEditorBase] deleteCurrentRow: view.deleteItem failed; row NOT added to deletedRows:',
         err,
       )
-      // Re-throw so the caller / host sees the failure — the row is
-      // still in the view, and the controller's internal state has
-      // NOT been mutated.
       throw err
     }
     this._deletedRows.push(item)
+    this.slickGrid.invalidate()
+    this.slickGrid.updateRowCount()
+    this.slickGrid.render()
 
     if (this.view.getLength() > 0) {
       const newRow = Math.max(0, row - 1)
@@ -1036,7 +1029,7 @@ export class IdevsGridEditorBase<TEntity, P = unknown> extends GridEditorBase<TE
    *
    *   - `commitCurrentEdit()` returns `false` — true cell-validation
    *     rejection (the editor's own `validate()` returned an error).
-   *     Logged at info-level for traceability.
+   *     Logged at warn-level for traceability.
    *   - `commitCurrentEdit()` throws — programmer / runtime error
    *     (editor `applyValue` crashes, lock-state corruption, downstream
    *     `onCellChange` subscriber throws). The in-flight value is

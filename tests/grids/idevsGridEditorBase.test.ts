@@ -1419,9 +1419,8 @@ describe('IdevsGridEditorBase — deleteCurrentRow transactional rollback (PR-4b
   // phantom delete entry → on save, the server got a delete request
   // for an entity the user could still see in the grid.
   //
-  // Round-6 fix: push onto `_deletedRows` AFTER all view/grid
-  // mutations succeed. On throw, _deletedRows stays unchanged + the
-  // caller sees the original error.
+  // Round-6 follow-up: only rollback on deleteItem failure. Once
+  // deleteItem succeeds we record into _deletedRows before repaint.
   it('does NOT add row to _deletedRows when view.deleteItem throws', () => {
     const items = [{ id: 5, name: 'A' }]
     const probe = makeProbe({ items })
@@ -1435,7 +1434,7 @@ describe('IdevsGridEditorBase — deleteCurrentRow transactional rollback (PR-4b
       // _deletedRows must NOT contain the phantom row.
       expect(probe._deletedRows).toEqual([])
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('view/grid mutation failed'),
+        expect.stringContaining('view.deleteItem failed'),
         expect.any(Error),
       )
     } finally {
@@ -1449,6 +1448,19 @@ describe('IdevsGridEditorBase — deleteCurrentRow transactional rollback (PR-4b
     const probe = makeProbe({ items })
     probe.slickGrid.getActiveCell = vi.fn(() => ({ row: 0, cell: 0 }))
     probe.deleteCurrentRow()
+    expect(probe._deletedRows).toEqual([{ id: 5, name: 'A' }])
+    expect(probe.view.deleteItem).toHaveBeenCalledWith(5)
+  })
+
+  it('keeps row in _deletedRows when repaint fails after deleteItem', () => {
+    const items = [{ id: 5, name: 'A' }]
+    const probe = makeProbe({ items })
+    probe.slickGrid.getActiveCell = vi.fn(() => ({ row: 0, cell: 0 }))
+    probe.slickGrid.invalidate = vi.fn(() => {
+      throw new Error('render failed')
+    })
+
+    expect(() => probe.deleteCurrentRow()).toThrow(/render failed/)
     expect(probe._deletedRows).toEqual([{ id: 5, name: 'A' }])
     expect(probe.view.deleteItem).toHaveBeenCalledWith(5)
   })
